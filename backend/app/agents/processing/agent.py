@@ -2,6 +2,9 @@
 Agent 3: Document Processing Agent
 Extracts text from PDFs, chunks it, generates embeddings, stores in ChromaDB.
 Uses the application-wide singleton ChromaDB collection.
+
+Fix: ChromaDB `where` filter now uses `{"$eq": value}` syntax required by
+     ChromaDB >= 0.4.x for non-string metadata comparisons.
 """
 import re
 from pathlib import Path
@@ -109,8 +112,8 @@ class DocumentProcessingAgent:
         # ChromaDB metadata values must be str/int/float/bool — no None allowed
         metadatas = [
             {
-                "paper_id":    paper_db_id,           # int  ✓
-                "project_id":  project_id,             # int  ✓
+                "paper_id":    paper_db_id,
+                "project_id":  project_id,
                 "title":       (paper.get("title") or "")[:500],
                 "source":      paper.get("source") or "",
                 "chunk_index": i,
@@ -136,10 +139,11 @@ class DocumentProcessingAgent:
             return []
         n_results = min(n_results, count)
 
+        # FIX: use {"$eq": value} operator syntax required by ChromaDB >= 0.4
         results = collection.query(
             query_texts=[question],
             n_results=n_results,
-            where={"project_id": project_id},   # int filter — valid in ChromaDB
+            where={"project_id": {"$eq": project_id}},
             include=["documents", "metadatas", "distances"],
         )
 

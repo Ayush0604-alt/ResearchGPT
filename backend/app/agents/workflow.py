@@ -1,11 +1,8 @@
 """
 LangGraph Workflow Orchestrator — 10-agent sequential research pipeline.
 
-Key fixes vs original:
-- DocumentProcessingAgent instantiated ONCE (not per node call)
-- Progress updates pushed to _task_store so the frontend can poll them in real-time
-- Per-node error handling with graceful degradation (pipeline continues even if one agent fails)
-- Agents that can run concurrently (summarization + findings) are gathered in parallel
+Fix: all node names prefixed with "step_" to avoid clashing with ResearchState
+     keys (LangGraph 0.2 raises ValueError if a node name == a state key).
 """
 import asyncio
 from typing import List, Dict, Any, TypedDict, Optional
@@ -28,7 +25,7 @@ from app.agents.presentation.agent   import PresentationAgent
 _doc_processor = DocumentProcessingAgent()
 
 
-# ── Graph State ───────────────────────────────────────────────────────────────
+# ── Graph State ────────────────────────────────────────────────────────────────
 
 class ResearchState(TypedDict):
     topic:             str
@@ -46,7 +43,7 @@ class ResearchState(TypedDict):
     errors:            List[str]
 
 
-# ── Helper to push progress to the task store ─────────────────────────────────
+# ── Helper to push progress to the task store ──────────────────────────────────
 
 def _update_progress(state: ResearchState, agent_name: str, pct: int) -> dict:
     """Write live progress back so the polling endpoint sees it instantly."""
@@ -61,7 +58,7 @@ def _update_progress(state: ResearchState, agent_name: str, pct: int) -> dict:
     return {"current_agent": agent_name, "progress": pct}
 
 
-# ── Node Implementations ──────────────────────────────────────────────────────
+# ── Node Implementations ───────────────────────────────────────────────────────
 
 async def node_paper_search(state: ResearchState) -> dict:
     _update_progress(state, "Paper Search", 5)
@@ -87,7 +84,7 @@ async def node_paper_collection(state: ResearchState) -> dict:
             updated.append(result)
         except Exception as e:
             logger.warning(f"[Workflow] Collection failed for '{paper.get('title','')[:40]}': {e}")
-            updated.append(paper)   # keep paper without PDF
+            updated.append(paper)
     prog = _update_progress(state, "Paper Collection", 22)
     return {**prog, "papers": updated}
 
@@ -213,37 +210,40 @@ async def node_presentation(state: ResearchState) -> dict:
     return {**prog, "presentation": result}
 
 
-# ── Build Graph ───────────────────────────────────────────────────────────────
+# ── Build Graph ────────────────────────────────────────────────────────────────
 
 def build_research_graph():
     graph = StateGraph(ResearchState)
-    graph.add_node("paper_search",        node_paper_search)
-    graph.add_node("paper_collection",    node_paper_collection)
-    graph.add_node("document_processing", node_document_processing)
-    graph.add_node("summarization",       node_summarization)
-    graph.add_node("key_findings",        node_key_findings)
-    graph.add_node("comparison",          node_comparison)
-    graph.add_node("trends",              node_trends)
-    graph.add_node("gaps",                node_gaps)
-    graph.add_node("literature_review",   node_literature_review)
-    graph.add_node("presentation",        node_presentation)
 
-    graph.set_entry_point("paper_search")
-    graph.add_edge("paper_search",        "paper_collection")
-    graph.add_edge("paper_collection",    "document_processing")
-    graph.add_edge("document_processing", "summarization")
-    graph.add_edge("summarization",       "key_findings")
-    graph.add_edge("key_findings",        "comparison")
-    graph.add_edge("comparison",          "trends")
-    graph.add_edge("trends",              "gaps")
-    graph.add_edge("gaps",                "literature_review")
-    graph.add_edge("literature_review",   "presentation")
-    graph.add_edge("presentation",        END)
+    # FIX: all node names prefixed with "step_" — LangGraph 0.2 raises
+    # ValueError if any node name matches a key in the state TypedDict.
+    graph.add_node("step_paper_search",        node_paper_search)
+    graph.add_node("step_paper_collection",    node_paper_collection)
+    graph.add_node("step_document_processing", node_document_processing)
+    graph.add_node("step_summarization",       node_summarization)
+    graph.add_node("step_key_findings",        node_key_findings)
+    graph.add_node("step_comparison",          node_comparison)
+    graph.add_node("step_trends",              node_trends)
+    graph.add_node("step_gaps",                node_gaps)
+    graph.add_node("step_literature_review",   node_literature_review)
+    graph.add_node("step_presentation",        node_presentation)
+
+    graph.set_entry_point("step_paper_search")
+    graph.add_edge("step_paper_search",        "step_paper_collection")
+    graph.add_edge("step_paper_collection",    "step_document_processing")
+    graph.add_edge("step_document_processing", "step_summarization")
+    graph.add_edge("step_summarization",       "step_key_findings")
+    graph.add_edge("step_key_findings",        "step_comparison")
+    graph.add_edge("step_comparison",          "step_trends")
+    graph.add_edge("step_trends",              "step_gaps")
+    graph.add_edge("step_gaps",                "step_literature_review")
+    graph.add_edge("step_literature_review",   "step_presentation")
+    graph.add_edge("step_presentation",        END)
 
     return graph.compile()
 
 
-# ── Public Runner ─────────────────────────────────────────────────────────────
+# ── Public Runner ──────────────────────────────────────────────────────────────
 
 async def run_research_workflow(
     topic: str,

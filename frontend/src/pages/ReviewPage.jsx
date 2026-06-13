@@ -13,21 +13,134 @@ const TABS = [
   { key: 'conclusion',   label: 'Conclusion'   },
 ]
 
-// Very minimal markdown-to-HTML renderer (no external dep needed for this)
+/**
+ * Minimal Markdown → HTML renderer.
+ *
+ * FIX: previous version matched separator rows (|---|---|) as data rows and
+ * emitted empty <td> cells, breaking table rendering.
+ * Now separator rows are explicitly skipped before building table HTML.
+ */
 function renderMd(text) {
   if (!text) return ''
-  return text
-    .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+
+  const lines   = text.split('\n')
+  const output  = []
+  let inTable   = false
+  let inList    = false
+  let inPara    = false
+
+  const closePara = () => { if (inPara)  { output.push('</p>');  inPara  = false } }
+  const closeList = () => { if (inList)  { output.push('</ul>'); inList  = false } }
+  const closeTable= () => { if (inTable) { output.push('</tbody></table>'); inTable = false } }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // Headings
+    if (/^### /.test(trimmed)) {
+      closePara(); closeList(); closeTable()
+      output.push(`<h3>${esc(trimmed.slice(4))}</h3>`)
+      continue
+    }
+    if (/^## /.test(trimmed)) {
+      closePara(); closeList(); closeTable()
+      output.push(`<h2>${esc(trimmed.slice(3))}</h2>`)
+      continue
+    }
+    if (/^# /.test(trimmed)) {
+      closePara(); closeList(); closeTable()
+      output.push(`<h1>${esc(trimmed.slice(2))}</h1>`)
+      continue
+    }
+
+    // Tables — detect by leading pipe
+    if (/^\|/.test(trimmed)) {
+      // Skip separator rows like |---|---|:
+      if (/^\|[\s\-|:]+\|$/.test(trimmed)) continue
+
+      if (!inTable) {
+        closePara(); closeList()
+        // Check if next line is a separator to decide if this is a header row
+        const nextLine = (lines[i + 1] || '').trim()
+        const isHeader = /^\|[\s\-|:]+\|$/.test(nextLine)
+        output.push('<table>')
+        if (isHeader) {
+          output.push('<thead><tr>')
+          const cells = parseCells(trimmed)
+          cells.forEach(c => output.push(`<th>${inline(c)}</th>`))
+          output.push('</tr></thead><tbody>')
+          i++ // skip separator
+          inTable = true
+          continue
+        } else {
+          output.push('<tbody>')
+          inTable = true
+        }
+      }
+
+      output.push('<tr>')
+      parseCells(trimmed).forEach(c => output.push(`<td>${inline(c)}</td>`))
+      output.push('</tr>')
+      continue
+    }
+
+    // List items
+    if (/^[-*] /.test(trimmed)) {
+      closePara(); closeTable()
+      if (!inList) { output.push('<ul>'); inList = true }
+      output.push(`<li>${inline(trimmed.slice(2))}</li>`)
+      continue
+    }
+
+    // Numbered list
+    if (/^\d+\. /.test(trimmed)) {
+      closePara(); closeTable()
+      if (!inList) { output.push('<ol>'); inList = true }
+      output.push(`<li>${inline(trimmed.replace(/^\d+\. /, ''))}</li>`)
+      continue
+    }
+
+    // Blank line
+    if (trimmed === '') {
+      closePara(); closeList(); closeTable()
+      continue
+    }
+
+    // Normal paragraph text
+    closeList(); closeTable()
+    if (!inPara) { output.push('<p>'); inPara = true }
+    else output.push(' ')
+    output.push(inline(trimmed))
+  }
+
+  closePara(); closeList(); closeTable()
+  return output.join('')
+}
+
+function parseCells(row) {
+  return row
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map(c => c.trim())
+}
+
+function esc(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function inline(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^\| .+$/gm, m => `<tr>${m.replace(/\|/g,'<td>').replace(/<td>$/, '')}</tr>`)
-    .replace(/(<tr>.*<\/tr>\n?)+/gs, t => `<table>${t}</table>`)
-    .replace(/^- (.+)$/gm,   '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/gs, l => `<ul>${l}</ul>`)
-    .replace(/\n{2,}/g, '</p><p>')
-    .replace(/^(?!<[hultd])(.+)$/gm, '<p>$1</p>')
-    .replace(/<p><\/p>/g, '')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
 }
 
 export default function ReviewPage() {

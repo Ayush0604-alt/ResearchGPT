@@ -10,9 +10,11 @@ export default function PresentationPage() {
   const [loading, setLoading] = useState(true)
   const [idx,     setIdx]     = useState(0)   // 0 = title slide
 
-  useEffect(() => { fetch() }, [id])
+  // FIX: renamed from `fetch` to `loadPresentation` — `fetch` shadowed window.fetch,
+  // which axios/httpx use internally and which caused silent failures in some environments.
+  useEffect(() => { loadPresentation() }, [id])
 
-  const fetch = async () => {
+  const loadPresentation = async () => {
     try {
       const { data } = await presentationsAPI.get(id)
       setPres(data)
@@ -55,11 +57,11 @@ export default function PresentationPage() {
     </div>
   )
 
-  const slides      = pres.slide_data?.slides || []
-  const titleText   = pres.slide_data?.title   || 'Research Presentation'
-  const subtitleText= pres.slide_data?.subtitle || 'AI-Powered Literature Review'
-  const totalSlides = slides.length + 1   // +1 for title
-  const current     = idx === 0 ? null : slides[idx - 1]
+  const slides       = pres.slide_data?.slides || []
+  const titleText    = pres.slide_data?.title    || 'Research Presentation'
+  const subtitleText = pres.slide_data?.subtitle || 'AI-Powered Literature Review'
+  const totalSlides  = slides.length + 1   // +1 for title slide
+  const current      = idx === 0 ? null : slides[idx - 1]
 
   return (
     <div>

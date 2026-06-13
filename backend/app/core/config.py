@@ -1,10 +1,13 @@
 """
 Application configuration — loaded from environment variables / .env file.
 """
+from dotenv import load_dotenv
 from typing import List
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
+load_dotenv()
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

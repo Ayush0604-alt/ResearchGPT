@@ -2,6 +2,11 @@
 Agents Routes: /api/agents
 Triggers the full LangGraph workflow as a background task.
 Uses module-level _task_store so workflow nodes can push live progress updates.
+
+Fixes:
+- `project.task_id or {}` bug changed to `project.task_id or ""`
+- Duplicate `from app.db.session import AsyncSessionLocal` import removed
+- Moved top-level import to module level
 """
 import asyncio
 import json
@@ -11,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.db.session import get_db
+from app.db.session import get_db, AsyncSessionLocal
 from app.models.models import (
     ResearchProject, Paper, PaperSummary, PaperFindings,
     LiteratureReview, Presentation, ProjectStatus,
@@ -23,8 +28,8 @@ from loguru import logger
 
 router = APIRouter()
 
-# Module-level store — shared with workflow.py so nodes can push live progress
-# Replace with Redis for multi-worker deployments
+# Module-level store — shared with workflow.py so nodes can push live progress.
+# Replace with Redis for multi-worker deployments.
 _task_store: Dict[str, dict] = {}
 
 
@@ -37,7 +42,7 @@ async def run_agents(
 ):
     result = await db.execute(
         select(ResearchProject).where(
-            ResearchProject.id   == body.project_id,
+            ResearchProject.id      == body.project_id,
             ResearchProject.user_id == user_id,
         )
     )
@@ -47,17 +52,20 @@ async def run_agents(
 
     # Prevent duplicate runs
     if project.status == ProjectStatus.RUNNING.value:
+        task_id = project.task_id or ""
+        # FIX: was `project.task_id or {}` — dict is not a valid dict key
+        progress = _task_store.get(task_id, {}).get("progress", 0)
         return AgentStatusResponse(
-            task_id=project.task_id or "",
+            task_id=task_id,
             status="running",
-            progress=_task_store.get(project.task_id or {}, {}).get("progress", 0),
+            progress=progress,
             current_agent="Already running",
         )
 
     task_id = f"task_{body.project_id}_{user_id}"
     _task_store[task_id] = {"status": "running", "progress": 0, "current_agent": "Starting"}
 
-    project.status = ProjectStatus.RUNNING.value
+    project.status  = ProjectStatus.RUNNING.value
     project.task_id = task_id
     await db.flush()
 
@@ -94,8 +102,7 @@ async def _run_workflow_background(
     topic: str,
     max_papers: int,
 ):
-    from app.db.session import AsyncSessionLocal
-
+    # FIX: AsyncSessionLocal imported at module level — no more duplicate local imports
     try:
         final_state = await run_research_workflow(
             topic=topic,
@@ -108,19 +115,19 @@ async def _run_workflow_background(
             # ── Persist papers ────────────────────────────────────────────────
             for paper_data in final_state.get("papers", []):
                 authors_raw = paper_data.get("authors", [])
-                # authors may be list or already a JSON string
-                if isinstance(authors_raw, list):
-                    authors_str = json.dumps(authors_raw)
-                else:
-                    authors_str = str(authors_raw)
+                authors_str = (
+                    json.dumps(authors_raw)
+                    if isinstance(authors_raw, list)
+                    else str(authors_raw)
+                )
 
                 paper = Paper(
                     project_id  = project_id,
-                    title       = paper_data.get("title", "")[:999],
+                    title       = (paper_data.get("title") or "")[:999],
                     authors     = authors_str,
                     abstract    = paper_data.get("abstract", ""),
                     year        = paper_data.get("year"),
-                    url         = (paper_data.get("url") or "")[:1999],
+                    url         = (paper_data.get("url")     or "")[:1999],
                     pdf_url     = (paper_data.get("pdf_url") or "")[:1999],
                     pdf_path    = paper_data.get("pdf_path"),
                     source      = paper_data.get("source", ""),
@@ -189,7 +196,6 @@ async def _run_workflow_background(
         _task_store[task_id] = {"status": "failed", "progress": 0, "error": str(e)}
 
         try:
-            from app.db.session import AsyncSessionLocal
             async with AsyncSessionLocal() as db:
                 res = await db.execute(
                     select(ResearchProject).where(ResearchProject.id == project_id)
@@ -198,5 +204,5 @@ async def _run_workflow_background(
                 if proj:
                     proj.status = ProjectStatus.FAILED.value
                 await db.commit()
-        except Exception:
-            pass
+        except Exception as inner_exc:
+            logger.error(f"[Background] Failed to update project status: {inner_exc}")

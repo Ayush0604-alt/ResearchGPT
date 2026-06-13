@@ -1,6 +1,9 @@
 """
 Agent 2: Paper Collection Agent
 Downloads PDFs from URLs and stores them locally (S3-ready).
+
+Fix: partial file is removed when download is aborted due to size limit,
+     so the next run will retry instead of treating the truncated file as valid.
 """
 import os
 import hashlib
@@ -42,7 +45,7 @@ class PaperCollectionAgent:
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Deterministic filename from URL hash
-        url_hash = hashlib.md5(pdf_url.encode()).hexdigest()[:12]
+        url_hash  = hashlib.md5(pdf_url.encode()).hexdigest()[:12]
         dest_path = dest_dir / f"{url_hash}.pdf"
 
         if dest_path.exists():
@@ -78,12 +81,22 @@ class PaperCollectionAgent:
                     logger.warning(f"[CollectionAgent] Non-PDF content-type: {content_type}")
 
                 downloaded = 0
+                too_large  = False
                 async with aiofiles.open(dest, "wb") as f:
                     async for chunk in resp.aiter_bytes(chunk_size=8192):
                         downloaded += len(chunk)
                         if downloaded > self.max_size_bytes:
-                            logger.warning(f"[CollectionAgent] File too large, aborting")
+                            logger.warning(
+                                f"[CollectionAgent] File too large "
+                                f"(>{settings.MAX_PDF_SIZE_MB} MB), aborting: {url}"
+                            )
+                            too_large = True
                             break
                         await f.write(chunk)
+
+                # FIX: remove partial file so the next run retries cleanly
+                if too_large and dest.exists():
+                    dest.unlink()
+                    return None
 
         return str(dest)
