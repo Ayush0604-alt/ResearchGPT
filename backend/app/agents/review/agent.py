@@ -1,6 +1,10 @@
 """
 Agent 9: Literature Review Agent
 Generates a full Markdown literature survey with introduction, body, discussion, conclusion.
+
+Fix: paper.get("authors") is stored as a JSON string in the DB (e.g. '["Alice","Bob"]')
+     but the in-memory workflow dict still has it as a Python list. The _format_references
+     method now handles both cases safely.
 """
 import json
 from typing import List, Dict, Any
@@ -18,13 +22,15 @@ class LiteratureReviewAgent:
         gaps: str = "",
     ) -> Dict[str, str]:
         """
-        Returns dict with keys: introduction, body, discussion, conclusion, full_review
+        Returns dict with keys: introduction, body, discussion, conclusion, trends, gaps, full_review
         """
         paper_summaries = []
         for p in papers:
+            # authors can be a list (in-workflow) or JSON string (from DB)
+            authors = self._get_authors(p)
             paper_summaries.append(
                 f"- **{p.get('title', 'Unknown')}** ({p.get('year', 'n/a')}) "
-                f"by {', '.join(p.get('authors', [])[:2] or ['Unknown'])}. "
+                f"by {', '.join(authors[:2]) if authors else 'Unknown'}. "
                 f"{p.get('summary', '')[:300]}"
             )
 
@@ -153,12 +159,29 @@ Write 2-3 paragraphs in formal academic style."""
             "full_review":  full_review,
         }
 
+    def _get_authors(self, paper: Dict) -> List[str]:
+        """Safely extract authors whether stored as list or JSON string."""
+        raw = paper.get("authors", [])
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+            # Plain comma-separated string fallback
+            return [a.strip() for a in raw.split(",") if a.strip()]
+        return []
+
     def _format_references(self, papers: List[Dict]) -> str:
         refs = []
         for i, p in enumerate(papers, 1):
-            authors = ", ".join((p.get("authors") or ["Unknown"])[:3])
+            authors = self._get_authors(p)
+            authors_str = ", ".join(authors[:3]) if authors else "Unknown"
             year    = p.get("year", "n.d.")
             title   = p.get("title", "Unknown Title")
             url     = p.get("url", "")
-            refs.append(f"[{i}] {authors} ({year}). *{title}*. {url}")
+            refs.append(f"[{i}] {authors_str} ({year}). *{title}*. {url}")
         return "\n\n".join(refs)

@@ -1,15 +1,15 @@
 """
 Agents Routes: /api/agents
 Triggers the full LangGraph workflow as a background task.
-Uses module-level _task_store so workflow nodes can push live progress updates.
 
-Fixes:
-- `project.task_id or {}` bug changed to `project.task_id or ""`
-- Duplicate `from app.db.session import AsyncSessionLocal` import removed
-- Moved top-level import to module level
+Fixes applied:
+- task_id now includes a timestamp so re-runs of the same project get a fresh task
+- Duplicate-run guard now only blocks RUNNING status, not FAILED/COMPLETED
+- AsyncSessionLocal imported at module level
 """
 import asyncio
 import json
+import time
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -50,10 +50,9 @@ async def run_agents(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Prevent duplicate runs
+    # Only block if CURRENTLY running — allow re-runs of failed/completed projects
     if project.status == ProjectStatus.RUNNING.value:
         task_id = project.task_id or ""
-        # FIX: was `project.task_id or {}` — dict is not a valid dict key
         progress = _task_store.get(task_id, {}).get("progress", 0)
         return AgentStatusResponse(
             task_id=task_id,
@@ -62,7 +61,11 @@ async def run_agents(
             current_agent="Already running",
         )
 
-    task_id = f"task_{body.project_id}_{user_id}"
+    # BUG FIX: include timestamp so each run gets a unique task_id
+    # Without this, re-running the same project reuses the old task_id and
+    # _task_store may still show "completed" from the previous run, causing
+    # the poller to immediately stop without waiting for the new run.
+    task_id = f"task_{body.project_id}_{user_id}_{int(time.time())}"
     _task_store[task_id] = {"status": "running", "progress": 0, "current_agent": "Starting"}
 
     project.status  = ProjectStatus.RUNNING.value
@@ -102,7 +105,6 @@ async def _run_workflow_background(
     topic: str,
     max_papers: int,
 ):
-    # FIX: AsyncSessionLocal imported at module level — no more duplicate local imports
     try:
         final_state = await run_research_workflow(
             topic=topic,
@@ -112,6 +114,30 @@ async def _run_workflow_background(
         )
 
         async with AsyncSessionLocal() as db:
+            # ── Delete old data so re-runs don't hit unique-constraint violations ──
+            # This lets users re-run a failed or completed project cleanly.
+            old_papers_result = await db.execute(
+                select(Paper).where(Paper.project_id == project_id)
+            )
+            for old_paper in old_papers_result.scalars().all():
+                await db.delete(old_paper)
+
+            old_review_result = await db.execute(
+                select(LiteratureReview).where(LiteratureReview.project_id == project_id)
+            )
+            old_review = old_review_result.scalar_one_or_none()
+            if old_review:
+                await db.delete(old_review)
+
+            old_pres_result = await db.execute(
+                select(Presentation).where(Presentation.project_id == project_id)
+            )
+            old_pres = old_pres_result.scalar_one_or_none()
+            if old_pres:
+                await db.delete(old_pres)
+
+            await db.flush()
+
             # ── Persist papers ────────────────────────────────────────────────
             for paper_data in final_state.get("papers", []):
                 authors_raw = paper_data.get("authors", [])
@@ -146,7 +172,7 @@ async def _run_workflow_background(
                     ))
 
                 findings = paper_data.get("findings") or {}
-                if any(findings.values()):
+                if any(v for v in findings.values() if v is not None):
                     db.add(PaperFindings(
                         paper_id      = paper.id,
                         model_used    = findings.get("model_used"),
@@ -159,6 +185,7 @@ async def _run_workflow_background(
 
             # ── Literature review ─────────────────────────────────────────────
             lit = final_state.get("literature_review") or {}
+            logger.info(f"[Background] literature_review keys: {list(lit.keys())}")
             if lit:
                 db.add(LiteratureReview(
                     project_id   = project_id,
@@ -172,6 +199,7 @@ async def _run_workflow_background(
 
             # ── Presentation ──────────────────────────────────────────────────
             pres = final_state.get("presentation") or {}
+            logger.info(f"[Background] presentation keys: {list(pres.keys())}, file_path={pres.get('file_path')}")
             if pres.get("file_path"):
                 db.add(Presentation(
                     project_id = project_id,
