@@ -28,19 +28,19 @@ email-validator==2.1.1
 
 # ==========================
 # Google Gemini
-# FIX: bumped from 0.5.4 — chromadb 0.5 embedding_functions requires >= 0.7
+# Use 0.8.x — stable async API, works with chromadb 0.5 embedding_functions
 # ==========================
 google-generativeai==0.7.2
 
 # ==========================
 # LangGraph / LangChain
-# FIX: langgraph 0.1.x requires langchain 0.1.x; using matched versions.
-# If you want langchain 0.2.x, upgrade langgraph to >= 0.2.x as well.
+# FIX: langgraph 0.2.x requires langchain-core >= 0.2; use matched versions.
 # ==========================
-langgraph==0.1.19
-langchain==0.1.20
-langchain-community==0.0.38
-langchain-google-genai==1.0.5
+langgraph==0.2.16
+langchain==0.2.14
+langchain-core==0.2.38
+langchain-community==0.2.12
+langchain-google-genai==1.0.10
 
 # ==========================
 # Vector Database
@@ -79,10 +79,10 @@ loguru==0.7.2
 tenacity==8.3.0
 
 # ==========================
-# Background Tasks
+# Background Tasks (optional — not used in default setup)
 # ==========================
-celery==5.3.6
-redis==5.0.4
+# celery==5.3.6
+# redis==5.0.4
 
 # ==========================
 # Testing

@@ -2,10 +2,11 @@
 Agents Routes: /api/agents
 Triggers the full LangGraph workflow as a background task.
 
-Fixes applied:
-- task_id now includes a timestamp so re-runs of the same project get a fresh task
-- Duplicate-run guard now only blocks RUNNING status, not FAILED/COMPLETED
-- AsyncSessionLocal imported at module level
+Fixes:
+- _task_store moved to app.core.task_store to break circular import with workflow.py
+- task_id includes timestamp so re-runs get a fresh task
+- Duplicate-run guard only blocks RUNNING status, not FAILED/COMPLETED
+- Old data deleted before re-run to avoid unique-constraint violations
 """
 import asyncio
 import json
@@ -23,14 +24,11 @@ from app.models.models import (
 )
 from app.schemas.schemas import AgentRunRequest, AgentStatusResponse
 from app.core.security import get_current_user_id
+from app.core.task_store import _task_store
 from app.agents.workflow import run_research_workflow
 from loguru import logger
 
 router = APIRouter()
-
-# Module-level store — shared with workflow.py so nodes can push live progress.
-# Replace with Redis for multi-worker deployments.
-_task_store: Dict[str, dict] = {}
 
 
 @router.post("/run", response_model=AgentStatusResponse)
@@ -61,10 +59,6 @@ async def run_agents(
             current_agent="Already running",
         )
 
-    # BUG FIX: include timestamp so each run gets a unique task_id
-    # Without this, re-running the same project reuses the old task_id and
-    # _task_store may still show "completed" from the previous run, causing
-    # the poller to immediately stop without waiting for the new run.
     task_id = f"task_{body.project_id}_{user_id}_{int(time.time())}"
     _task_store[task_id] = {"status": "running", "progress": 0, "current_agent": "Starting"}
 
@@ -115,7 +109,6 @@ async def _run_workflow_background(
 
         async with AsyncSessionLocal() as db:
             # ── Delete old data so re-runs don't hit unique-constraint violations ──
-            # This lets users re-run a failed or completed project cleanly.
             old_papers_result = await db.execute(
                 select(Paper).where(Paper.project_id == project_id)
             )

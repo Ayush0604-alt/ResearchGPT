@@ -1,14 +1,21 @@
+"""
+Async SQLAlchemy session factory.
+
+Fixes:
+- Removed pool_size/max_overflow — these conflict when connect_args includes ssl,
+  and are not needed for typical single-worker dev setups.
+- Added proper SSL detection for Neon/Supabase hosted Postgres.
+- get_db generator correctly commits on success and rolls back on error.
+"""
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from app.core.config import settings
 
-# Strip sslmode/channel_binding from URL and pass ssl=True separately
-# asyncpg doesn't accept these as query params
 connect_args = {}
 db_url = settings.DATABASE_URL
 
-if "neon.tech" in db_url or "sslmode" in db_url:
-    # Remove query params asyncpg can't handle
+# Strip sslmode query params that asyncpg can't handle; pass ssl= instead
+if "neon.tech" in db_url or "supabase" in db_url or "sslmode=require" in db_url:
     db_url = db_url.split("?")[0]
     connect_args["ssl"] = "require"
 
@@ -16,8 +23,6 @@ engine = create_async_engine(
     db_url,
     echo=settings.DEBUG,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
     connect_args=connect_args,
 )
 
@@ -28,6 +33,7 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
     autocommit=False,
 )
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:

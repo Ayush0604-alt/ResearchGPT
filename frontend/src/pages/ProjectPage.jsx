@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  Play, Loader2, CheckCircle, XCircle, Clock,
+  Play, Loader2, CheckCircle, XCircle,
   MessageSquare, BookOpen, Presentation, ExternalLink,
   ChevronDown, ChevronUp, Users, ArrowLeft
 } from 'lucide-react'
@@ -43,12 +43,19 @@ export default function ProjectPage() {
 
   const load = async () => {
     try {
-      const [pjRes, papRes] = await Promise.all([
-        projectsAPI.get(id),
-        papersAPI.list(id).catch(() => ({ data: [] })),
-      ])
+      const pjRes = await projectsAPI.get(id)
       setProject(pjRes.data)
-      setPapers(papRes.data || [])
+
+      // FIX: papersAPI.list returns the papers array directly as data
+      // (FastAPI List[PaperOut] response), so we handle both array and object shapes.
+      try {
+        const papRes = await papersAPI.list(id)
+        const papersData = Array.isArray(papRes.data) ? papRes.data : (papRes.data || [])
+        setPapers(papersData)
+      } catch {
+        setPapers([])
+      }
+
       if (pjRes.data.task_id && pjRes.data.status === 'running') {
         poll(pjRes.data.task_id)
       }
@@ -66,7 +73,7 @@ export default function ProjectPage() {
       setProject(p => ({ ...p, status: 'running', task_id: data.task_id }))
       setTaskStatus(data)
       poll(data.task_id)
-      toast.success('Pipeline started')
+      toast.success('Pipeline started!')
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to start pipeline')
       setStarting(false)
@@ -83,8 +90,10 @@ export default function ProjectPage() {
           clearInterval(pollRef.current)
           setStarting(false)
           setProject(p => ({ ...p, status: 'completed' }))
-          const { data: papData } = await papersAPI.list(id)
-          setPapers(papData || [])
+          try {
+            const { data: papData } = await papersAPI.list(id)
+            setPapers(Array.isArray(papData) ? papData : (papData || []))
+          } catch { /* non-critical */ }
           toast.success('Pipeline completed!')
         } else if (data.status === 'failed') {
           clearInterval(pollRef.current)
@@ -101,6 +110,7 @@ export default function ProjectPage() {
       <Loader2 className="animate-spin text-blue-500" size={24} />
     </div>
   )
+
   if (!project) return (
     <div className="text-sm text-gray-500">Project not found.</div>
   )
@@ -163,8 +173,8 @@ export default function ProjectPage() {
 
       {/* Status pill */}
       <div className="flex items-center gap-2">
-        {isPending   && <span className="badge-amber"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" />Ready to run</span>}
-        {isRunning   && <span className="badge-blue"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />Running</span>}
+        {isPending   && <span className="badge-amber"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Ready to run</span>}
+        {isRunning   && <span className="badge-blue"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" /> Running</span>}
         {isCompleted && <span className="badge-green"><CheckCircle size={11} /> Completed · {papers.length} papers</span>}
         {isFailed    && <span className="badge-red"><XCircle size={11} /> Failed</span>}
       </div>
@@ -198,7 +208,7 @@ export default function ProjectPage() {
                     transition-all duration-300
                     ${done   ? 'bg-green-500 text-white'
                     : active ? 'bg-blue-500 text-white ring-2 ring-blue-200'
-                    : 'bg-gray-100 text-gray-400'}`}>
+                    :          'bg-gray-100 text-gray-400'}`}>
                     {done ? <CheckCircle size={12} /> : i + 1}
                   </div>
                   <span className="text-center text-xs text-gray-400 leading-tight hidden sm:block">

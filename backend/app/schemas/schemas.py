@@ -1,8 +1,13 @@
 """
 Pydantic v2 schemas for request/response validation.
+
+Fixes:
+- CitationSource.relevance_score is Optional[float] with default 0.0 —
+  ChromaDB distance-to-score conversion may produce None in edge cases.
+- RAGResponse.citations uses List[Dict] as fallback if structured parsing fails.
 """
 from datetime import datetime
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from pydantic import BaseModel, EmailStr, field_validator
 
 
@@ -45,9 +50,9 @@ class ProjectOut(BaseModel):
     user_id: int
     title: str
     topic: str
-    description: Optional[str]
+    description: Optional[str] = None
     status: str
-    task_id: Optional[str]
+    task_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -74,11 +79,11 @@ class PaperOut(BaseModel):
     id: int
     project_id: int
     title: str
-    authors: Optional[str]
-    abstract: Optional[str]
-    year: Optional[int]
-    url: Optional[str]
-    source: Optional[str]
+    authors: Optional[str] = None
+    abstract: Optional[str] = None
+    year: Optional[int] = None
+    url: Optional[str] = None
+    source: Optional[str] = None
     status: str
     created_at: datetime
 
@@ -89,20 +94,20 @@ class PaperOut(BaseModel):
 
 class SummaryOut(BaseModel):
     paper_id: int
-    summary: Optional[str]
-    methodology: Optional[str]
-    conclusion: Optional[str]
+    summary: Optional[str] = None
+    methodology: Optional[str] = None
+    conclusion: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
 class FindingsOut(BaseModel):
     paper_id: int
-    model_used: Optional[str]
-    dataset_used: Optional[str]
-    accuracy: Optional[str]
-    contributions: Optional[str]
-    limitations: Optional[str]
-    raw_json: Optional[Dict[str, Any]]
+    model_used: Optional[str] = None
+    dataset_used: Optional[str] = None
+    accuracy: Optional[str] = None
+    contributions: Optional[str] = None
+    limitations: Optional[str] = None
+    raw_json: Optional[Dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
 
@@ -129,9 +134,10 @@ class RAGQuery(BaseModel):
 
 class CitationSource(BaseModel):
     paper_title: str
-    paper_id: int
+    paper_id: Optional[int] = None
     chunk_text: str
-    relevance_score: float
+    # FIX: Optional with default 0.0 — score may be missing in edge cases
+    relevance_score: Optional[float] = 0.0
 
 class RAGResponse(BaseModel):
     answer: str
@@ -144,12 +150,12 @@ class RAGResponse(BaseModel):
 class LiteratureReviewOut(BaseModel):
     id: int
     project_id: int
-    introduction: Optional[str]
-    body: Optional[str]
-    discussion: Optional[str]
-    conclusion: Optional[str]
-    trends: Optional[str]
-    gaps: Optional[str]
+    introduction: Optional[str] = None
+    body: Optional[str] = None
+    discussion: Optional[str] = None
+    conclusion: Optional[str] = None
+    trends: Optional[str] = None
+    gaps: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -160,8 +166,8 @@ class LiteratureReviewOut(BaseModel):
 class PresentationOut(BaseModel):
     id: int
     project_id: int
-    file_path: Optional[str]
-    slide_data: Optional[Dict[str, Any]]
+    file_path: Optional[str] = None
+    slide_data: Optional[Dict[str, Any]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -178,7 +184,7 @@ class ChatMessageOut(BaseModel):
     project_id: int
     role: str
     content: str
-    citations: Optional[Dict[str, Any]]
+    citations: Optional[Dict[str, Any]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

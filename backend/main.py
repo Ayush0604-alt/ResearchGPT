@@ -1,6 +1,12 @@
 """
 ResearchGPT — FastAPI Application Entry Point
+
+Fixes:
+- Removed metadata.create_all (rely on Alembic only)
+- Ensured all storage directories are created on startup
+- GZipMiddleware and CORSMiddleware properly ordered
 """
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,16 +24,13 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    On startup: ensure storage directories exist.
-    On shutdown: dispose async engine connection pool.
-    We rely on Alembic migrations for the DB schema — no metadata.create_all here.
+    Startup: ensure all storage directories exist.
+    Shutdown: dispose async engine connection pool.
     """
-    import os
-    from app.core.config import settings as s
-    os.makedirs(s.PDF_STORAGE_DIR,   exist_ok=True)
-    os.makedirs(s.CHROMA_PERSIST_DIR, exist_ok=True)
-    os.makedirs("./storage/presentations", exist_ok=True)
-    os.makedirs("./logs", exist_ok=True)
+    os.makedirs(settings.PDF_STORAGE_DIR,    exist_ok=True)
+    os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
+    os.makedirs("./storage/presentations",   exist_ok=True)
+    os.makedirs("./logs",                    exist_ok=True)
     yield
     await engine.dispose()
 
@@ -41,6 +44,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS must come before GZip
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -64,6 +68,7 @@ app.include_router(chat.router,          prefix=f"{PREFIX}/chat",          tags=
 @app.get("/", tags=["Health"])
 async def root():
     return {"status": "ok", "app": settings.APP_NAME, "version": "1.0.0"}
+
 
 @app.get("/health", tags=["Health"])
 async def health():

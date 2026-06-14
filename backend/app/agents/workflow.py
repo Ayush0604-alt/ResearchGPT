@@ -1,8 +1,10 @@
 """
 LangGraph Workflow Orchestrator — 10-agent sequential research pipeline.
 
-Fix: all node names prefixed with "step_" to avoid clashing with ResearchState
-     keys (LangGraph 0.2 raises ValueError if a node name == a state key).
+Fixes:
+- Circular import removed: _task_store now lives in app.core.task_store
+- All node names prefixed with "step_" to avoid clashing with ResearchState
+  keys (LangGraph 0.2 raises ValueError if a node name == a state key).
 """
 import asyncio
 from typing import List, Dict, Any, TypedDict, Optional
@@ -20,6 +22,7 @@ from app.agents.trends.agent         import TrendAnalysisAgent
 from app.agents.gaps.agent           import ResearchGapAgent
 from app.agents.review.agent         import LiteratureReviewAgent
 from app.agents.presentation.agent   import PresentationAgent
+from app.core.task_store             import _task_store
 
 # ── Shared agent instances (avoids re-init of ChromaDB on every node call) ────
 _doc_processor = DocumentProcessingAgent()
@@ -47,7 +50,6 @@ class ResearchState(TypedDict):
 
 def _update_progress(state: ResearchState, agent_name: str, pct: int) -> dict:
     """Write live progress back so the polling endpoint sees it instantly."""
-    from app.api.routes.agents import _task_store
     task_id = state.get("task_id", "")
     if task_id and task_id in _task_store:
         _task_store[task_id].update({
@@ -215,8 +217,6 @@ async def node_presentation(state: ResearchState) -> dict:
 def build_research_graph():
     graph = StateGraph(ResearchState)
 
-    # FIX: all node names prefixed with "step_" — LangGraph 0.2 raises
-    # ValueError if any node name matches a key in the state TypedDict.
     graph.add_node("step_paper_search",        node_paper_search)
     graph.add_node("step_paper_collection",    node_paper_collection)
     graph.add_node("step_document_processing", node_document_processing)

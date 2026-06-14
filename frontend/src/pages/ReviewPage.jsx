@@ -16,61 +16,64 @@ const TABS = [
 /**
  * Minimal Markdown → HTML renderer.
  *
- * FIX: previous version matched separator rows (|---|---|) as data rows and
- * emitted empty <td> cells, breaking table rendering.
- * Now separator rows are explicitly skipped before building table HTML.
+ * Fixes:
+ * - ol closing tag was </ul> — now correctly </ol>
+ * - Separator rows (|---|---|) are explicitly skipped
+ * - thead/tbody properly structured for tables
  */
 function renderMd(text) {
   if (!text) return ''
 
-  const lines   = text.split('\n')
-  const output  = []
-  let inTable   = false
-  let inList    = false
-  let inPara    = false
+  const lines  = text.split('\n')
+  const output = []
+  let inTable  = false
+  let inList   = false
+  let inOl     = false
+  let inPara   = false
 
-  const closePara = () => { if (inPara)  { output.push('</p>');  inPara  = false } }
-  const closeList = () => { if (inList)  { output.push('</ul>'); inList  = false } }
-  const closeTable= () => { if (inTable) { output.push('</tbody></table>'); inTable = false } }
+  const closePara  = () => { if (inPara)  { output.push('</p>');   inPara  = false } }
+  const closeUl    = () => { if (inList)  { output.push('</ul>');  inList  = false } }
+  const closeOl    = () => { if (inOl)    { output.push('</ol>');  inOl    = false } } // FIX: was missing
+  const closeTable = () => { if (inTable) { output.push('</tbody></table>'); inTable = false } }
+
+  const closeLists = () => { closeUl(); closeOl() }
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+    const line    = lines[i]
     const trimmed = line.trim()
 
     // Headings
     if (/^### /.test(trimmed)) {
-      closePara(); closeList(); closeTable()
+      closePara(); closeLists(); closeTable()
       output.push(`<h3>${esc(trimmed.slice(4))}</h3>`)
       continue
     }
     if (/^## /.test(trimmed)) {
-      closePara(); closeList(); closeTable()
+      closePara(); closeLists(); closeTable()
       output.push(`<h2>${esc(trimmed.slice(3))}</h2>`)
       continue
     }
     if (/^# /.test(trimmed)) {
-      closePara(); closeList(); closeTable()
+      closePara(); closeLists(); closeTable()
       output.push(`<h1>${esc(trimmed.slice(2))}</h1>`)
       continue
     }
 
     // Tables — detect by leading pipe
     if (/^\|/.test(trimmed)) {
-      // Skip separator rows like |---|---|:
+      // Skip separator rows like |---|---| or |:---|:---:|
       if (/^\|[\s\-|:]+\|$/.test(trimmed)) continue
 
       if (!inTable) {
-        closePara(); closeList()
-        // Check if next line is a separator to decide if this is a header row
+        closePara(); closeLists()
         const nextLine = (lines[i + 1] || '').trim()
         const isHeader = /^\|[\s\-|:]+\|$/.test(nextLine)
         output.push('<table>')
         if (isHeader) {
           output.push('<thead><tr>')
-          const cells = parseCells(trimmed)
-          cells.forEach(c => output.push(`<th>${inline(c)}</th>`))
+          parseCells(trimmed).forEach(c => output.push(`<th>${inline(c)}</th>`))
           output.push('</tr></thead><tbody>')
-          i++ // skip separator
+          i++ // skip separator line
           inTable = true
           continue
         } else {
@@ -85,36 +88,37 @@ function renderMd(text) {
       continue
     }
 
-    // List items
+    // Unordered list items
     if (/^[-*] /.test(trimmed)) {
-      closePara(); closeTable()
+      closePara(); closeTable(); closeOl()
       if (!inList) { output.push('<ul>'); inList = true }
       output.push(`<li>${inline(trimmed.slice(2))}</li>`)
       continue
     }
 
-    // Numbered list
+    // Numbered / ordered list items
     if (/^\d+\. /.test(trimmed)) {
-      closePara(); closeTable()
-      if (!inList) { output.push('<ol>'); inList = true }
+      closePara(); closeTable(); closeUl()
+      if (!inOl) { output.push('<ol>'); inOl = true }
       output.push(`<li>${inline(trimmed.replace(/^\d+\. /, ''))}</li>`)
       continue
     }
 
-    // Blank line
+    // Blank line — close everything open
     if (trimmed === '') {
-      closePara(); closeList(); closeTable()
+      closePara(); closeLists(); closeTable()
       continue
     }
 
     // Normal paragraph text
-    closeList(); closeTable()
+    closeLists(); closeTable()
     if (!inPara) { output.push('<p>'); inPara = true }
     else output.push(' ')
     output.push(inline(trimmed))
   }
 
-  closePara(); closeList(); closeTable()
+  // Close anything still open at EOF
+  closePara(); closeLists(); closeTable()
   return output.join('')
 }
 
@@ -164,14 +168,22 @@ export default function ReviewPage() {
 
   const download = async () => {
     try {
+      // FIX: api.js now sets responseType: 'text' for this endpoint
       const { data } = await reviewsAPI.markdown(id)
       const blob = new Blob([data], { type: 'text/markdown' })
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {
-        href: url, download: `literature_review_project_${id}.md`
+        href: url,
+        download: `literature_review_project_${id}.md`,
       })
-      a.click(); URL.revokeObjectURL(url)
-    } catch { toast.error('Download failed') }
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('Downloaded!')
+    } catch {
+      toast.error('Download failed')
+    }
   }
 
   if (loading) return (

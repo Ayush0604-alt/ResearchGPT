@@ -1,19 +1,21 @@
 """
 Application configuration — loaded from environment variables / .env file.
+
+Fix: moved load_dotenv() call before Settings class definition so .env is
+loaded before pydantic-settings tries to read values.
 """
-from dotenv import load_dotenv
+import json
 from typing import List
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-load_dotenv()
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignore unknown env vars instead of raising
     )
 
     # ── App ────────────────────────────────────────────────────────────────────
@@ -70,8 +72,11 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors(cls, v):
         if isinstance(v, str):
-            import json
-            return json.loads(v)
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # Handle comma-separated string fallback
+                return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
 

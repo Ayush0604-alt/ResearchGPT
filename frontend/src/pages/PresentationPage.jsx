@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Download, Loader2, ChevronLeft, ChevronRight, Presentation } from 'lucide-react'
+// FIX: renamed Presentation import to PresentationIcon to avoid conflict with
+// the component function name "PresentationPage" and local variables.
+import { ArrowLeft, Download, Loader2, ChevronLeft, ChevronRight, Presentation as PresentationIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { presentationsAPI } from '../services/api'
 
@@ -10,8 +12,6 @@ export default function PresentationPage() {
   const [loading, setLoading] = useState(true)
   const [idx,     setIdx]     = useState(0)   // 0 = title slide
 
-  // FIX: renamed from `fetch` to `loadPresentation` — `fetch` shadowed window.fetch,
-  // which axios/httpx use internally and which caused silent failures in some environments.
   useEffect(() => { loadPresentation() }, [id])
 
   const loadPresentation = async () => {
@@ -25,17 +25,27 @@ export default function PresentationPage() {
     }
   }
 
+  // FIX: use arraybuffer responseType (set in api.js) — Blob constructor from
+  // arraybuffer is more reliable across browsers than from the axios blob type.
   const download = async () => {
     try {
       const { data } = await presentationsAPI.download(id)
-      const url = URL.createObjectURL(new Blob([data],
-        { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
-      const a = Object.assign(document.createElement('a'), {
-        href: url, download: `presentation_project_${id}.pptx`
+      const blob = new Blob([data], {
+        type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       })
-      a.click(); URL.revokeObjectURL(url)
-      toast.success('Downloaded')
-    } catch { toast.error('Download failed') }
+      const url = URL.createObjectURL(blob)
+      const a = Object.assign(document.createElement('a'), {
+        href: url,
+        download: `presentation_project_${id}.pptx`,
+      })
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('Downloaded!')
+    } catch {
+      toast.error('Download failed')
+    }
   }
 
   if (loading) return (
@@ -47,7 +57,7 @@ export default function PresentationPage() {
   if (!pres) return (
     <div className="text-center py-16">
       <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
-        <Presentation size={18} className="text-blue-500" />
+        <PresentationIcon size={18} className="text-blue-500" />
       </div>
       <h3 className="text-sm font-medium text-gray-900 mb-1">No presentation yet</h3>
       <p className="text-xs text-gray-500 mb-4">Run the pipeline to generate a PPTX.</p>
