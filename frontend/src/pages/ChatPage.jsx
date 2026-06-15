@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Send, Loader2, ArrowLeft, Trash2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { ragAPI, chatAPI } from '../services/api'
+import { chatAPI } from '../services/api'
 
 const SUGGESTIONS = [
   'What models were used across papers?',
@@ -42,7 +42,7 @@ export default function ChatPage() {
     setMessages(m => [...m, userMsg])
     setLoading(true)
     try {
-      const { data } = await ragAPI.query({ project_id: parseInt(id), question: q })
+      const { data } = await chatAPI.query({ project_id: parseInt(id), question: q })
       setMessages(m => [...m, {
         id: Date.now() + 1,
         role: 'assistant',
@@ -104,8 +104,8 @@ export default function ChatPage() {
 
         {!fetching && messages.length === 0 && (
           <div className="text-center py-12">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
-              <BookOpen size={18} className="text-blue-500" />
+            <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center mx-auto mb-3">
+              <BookOpen size={18} className="text-brand-500" />
             </div>
             <p className="text-sm font-medium text-gray-700 mb-1">
               Ask anything about your papers
@@ -119,7 +119,7 @@ export default function ChatPage() {
                   key={s}
                   onClick={() => setInput(s)}
                   className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg
-                             text-gray-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50
+                             text-gray-600 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50
                              transition-colors"
                 >
                   {s}
@@ -133,7 +133,7 @@ export default function ChatPage() {
           <div key={msg.id}
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center
+              <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-600 flex items-center
                               justify-center text-xs font-semibold flex-shrink-0 mt-0.5">
                 AI
               </div>
@@ -142,7 +142,7 @@ export default function ChatPage() {
             <div className="max-w-xl">
               <div className={`px-4 py-3 rounded-xl text-sm leading-relaxed
                 ${msg.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-br-sm'
+                  ? 'bg-brand-600 text-white rounded-br-sm'
                   : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'}`}>
                 <p className="whitespace-pre-wrap">{msg.content}</p>
               </div>
@@ -178,7 +178,7 @@ export default function ChatPage() {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center
+            <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-600 flex items-center
                             justify-center text-xs font-semibold flex-shrink-0">
               AI
             </div>

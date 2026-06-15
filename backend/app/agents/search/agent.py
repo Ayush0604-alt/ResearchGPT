@@ -19,6 +19,7 @@ class PaperSearchAgent:
 
     def __init__(self):
         self.timeout = httpx.Timeout(30.0)
+        self.headers = {"User-Agent": "ResearchGPT/1.0 (mailto:contact@researchgpt.ai)"}
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ class PaperSearchAgent:
             "limit": min(limit, 10),
             "fields": "title,authors,abstract,year,externalIds,openAccessPdf,url",
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
             data = resp.json()
@@ -83,14 +84,14 @@ class PaperSearchAgent:
     async def _search_arxiv(self, topic: str, limit: int) -> List[Dict]:
         import xml.etree.ElementTree as ET
 
-        url = "http://export.arxiv.org/api/query"
+        url = "https://export.arxiv.org/api/query"
         params = {
             "search_query": f"all:{topic}",
             "start": 0,
             "max_results": min(limit, 10),
             "sortBy": "relevance",
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
 
@@ -130,9 +131,10 @@ class PaperSearchAgent:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def _search_pubmed(self, topic: str, limit: int) -> List[Dict]:
+        import xml.etree.ElementTree as ET
         base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
             # Step 1: get IDs
             search_resp = await client.get(
                 f"{base}/esearch.fcgi",
@@ -144,32 +146,45 @@ class PaperSearchAgent:
             if not ids:
                 return []
 
-            # Step 2: fetch summaries
+            # Step 2: fetch XML abstracts
             fetch_resp = await client.get(
-                f"{base}/esummary.fcgi",
-                params={"db": "pubmed", "id": ",".join(ids), "retmode": "json"},
+                f"{base}/efetch.fcgi",
+                params={"db": "pubmed", "id": ",".join(ids), "retmode": "xml"},
             )
             fetch_resp.raise_for_status()
-            summaries = fetch_resp.json().get("result", {})
+            root = ET.fromstring(fetch_resp.text)
 
         papers = []
-        for pmid in ids:
-            p = summaries.get(pmid, {})
-            if not p:
-                continue
-            authors = [a.get("name", "") for a in p.get("authors", [])]
-            pub_date = p.get("pubdate", "")
-            year = int(pub_date[:4]) if pub_date and pub_date[:4].isdigit() else None
-            papers.append({
-                "title":       p.get("title", ""),
-                "authors":     authors,
-                "abstract":    "",   # PubMed summary endpoint doesn't include abstract
-                "year":        year,
-                "url":         f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                "pdf_url":     None,
-                "source":      "pubmed",
-                "external_id": pmid,
-            })
+        for article in root.findall(".//PubmedArticle"):
+            pmid = article.findtext(".//PMID", default="")
+            title = article.findtext(".//ArticleTitle", default="")
+            
+            # Combine all abstract text parts
+            abstract_texts = article.findall(".//AbstractText")
+            abstract = " ".join([a.text for a in abstract_texts if a.text])
+            
+            # Authors
+            authors = []
+            for author in article.findall(".//Author"):
+                last = author.findtext("LastName", default="")
+                init = author.findtext("Initials", default="")
+                if last:
+                    authors.append(f"{last} {init}".strip())
+                    
+            year_elem = article.findtext(".//PubDate/Year")
+            year = int(year_elem) if year_elem and year_elem.isdigit() else None
+            
+            if title and abstract:
+                papers.append({
+                    "title":       title,
+                    "authors":     authors,
+                    "abstract":    abstract,
+                    "year":        year,
+                    "url":         f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                    "pdf_url":     None,
+                    "source":      "pubmed",
+                    "external_id": pmid,
+                })
 
         logger.debug(f"[PubMed] {len(papers)} papers")
         return papers
@@ -177,10 +192,12 @@ class PaperSearchAgent:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _deduplicate(self, papers: List[Dict]) -> List[Dict]:
-        """Remove duplicates by normalised title."""
+        """Remove duplicates by normalised title and filter out papers without abstracts."""
         seen = set()
         unique = []
         for p in papers:
+            if not p.get("abstract") or len(p["abstract"].strip()) < 20:
+                continue
             key = p.get("title", "").lower().strip()[:80]
             if key and key not in seen:
                 seen.add(key)

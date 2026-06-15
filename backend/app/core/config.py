@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # ── Database ───────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/researchgpt"
-    SYNC_DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/researchgpt"
+    SYNC_DATABASE_URL: str = "postgresql+psycopg://postgres:password@localhost:5432/researchgpt"
 
     # ── Google Gemini ──────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
@@ -77,6 +77,13 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 # Handle comma-separated string fallback
                 return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("SYNC_DATABASE_URL", mode="before")
+    @classmethod
+    def force_psycopg3(cls, v):
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
 
 

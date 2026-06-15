@@ -9,7 +9,7 @@ import { projectsAPI } from '../services/api'
 
 const STATUS = {
   pending:   { label: 'Pending',   cls: 'badge-amber', dot: 'bg-amber-400' },
-  running:   { label: 'Running',   cls: 'badge-blue',  dot: 'bg-blue-400 animate-pulse' },
+  running:   { label: 'Running',   cls: 'badge-blue',  dot: 'bg-brand-400 animate-pulse' },
   completed: { label: 'Done',      cls: 'badge-green', dot: 'bg-green-500' },
   failed:    { label: 'Failed',    cls: 'badge-red',   dot: 'bg-red-400' },
 }
@@ -47,7 +47,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
-        <Loader2 className="animate-spin text-blue-500" size={24} />
+        <Loader2 className="animate-spin text-brand-500" size={24} />
       </div>
     )
   }
@@ -72,8 +72,8 @@ export default function DashboardPage() {
       {/* Empty state */}
       {projects.length === 0 && (
         <div className="card-p text-center py-16">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-            <FileSearch size={22} className="text-blue-500" />
+          <div className="w-12 h-12 rounded-xl bg-brand-50 flex items-center justify-center mx-auto mb-4">
+            <FileSearch size={22} className="text-brand-500" />
           </div>
           <h3 className="font-medium text-gray-900 mb-1">No projects yet</h3>
           <p className="text-sm text-gray-500 mb-5">
@@ -110,7 +110,7 @@ export default function DashboardPage() {
                   <tr key={project.id} className="group hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3.5">
                       <Link to={`/project/${project.id}`} className="block">
-                        <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600
+                        <p className="text-sm font-medium text-gray-900 group-hover:text-brand-600
                                       transition-colors truncate max-w-sm">
                           {project.title}
                         </p>

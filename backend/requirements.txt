@@ -8,21 +8,24 @@ python-multipart==0.0.9
 # ==========================
 # Database
 # ==========================
-sqlalchemy==2.0.30
+sqlalchemy>=2.0.35
 alembic==1.13.1
-asyncpg==0.29.0
-psycopg2-binary==2.9.9
+asyncpg>=0.30.0
+psycopg[binary]>=3.2.2
 
 # ==========================
 # Auth & Security
 # ==========================
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==3.2.0
+cffi>=1.17.1
+cryptography>=43.0.1
 
 # ==========================
 # Pydantic
 # ==========================
-pydantic==2.7.1
+pydantic>=2.7.4
 pydantic-settings==2.2.1
 email-validator==2.1.1
 
@@ -30,28 +33,16 @@ email-validator==2.1.1
 # Google Gemini
 # Use 0.8.x — stable async API, works with chromadb 0.5 embedding_functions
 # ==========================
-google-generativeai==0.7.2
+google-genai>=0.1.2
 
 # ==========================
 # LangGraph / LangChain
 # FIX: langgraph 0.2.x requires langchain-core >= 0.2; use matched versions.
 # ==========================
 langgraph==0.2.16
-langchain==0.2.14
 langchain-core==0.2.38
-langchain-community==0.2.12
-langchain-google-genai==1.0.10
 
-# ==========================
-# Vector Database
-# ==========================
-chromadb==0.5.0
 
-# ==========================
-# PDF Processing
-# ==========================
-pypdf==4.2.0
-pdfplumber==0.11.0
 
 # ==========================
 # HTTP & Async
@@ -61,15 +52,10 @@ aiohttp==3.9.5
 aiofiles==23.2.1
 
 # ==========================
-# PowerPoint Generation
-# ==========================
-python-pptx==0.6.23
-
-# ==========================
 # Data Processing
 # ==========================
-numpy==1.26.4
-pandas==2.2.2
+numpy>=1.26.4
+pandas>=2.2.2
 
 # ==========================
 # Utilities

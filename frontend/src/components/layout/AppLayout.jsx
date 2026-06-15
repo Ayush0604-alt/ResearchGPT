@@ -17,7 +17,7 @@ export default function AppLayout() {
       <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
         {/* Brand */}
         <div className="h-14 flex items-center gap-2.5 px-5 border-b border-gray-100">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center flex-shrink-0">
             <FlaskConical size={14} className="text-white" />
           </div>
           <span className="font-semibold text-gray-900 text-sm">ResearchGPT</span>
@@ -31,7 +31,7 @@ export default function AppLayout() {
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors
                ${isActive
-                 ? 'bg-blue-50 text-blue-700 font-medium'
+                 ? 'bg-brand-50 text-brand-700 font-medium'
                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
             }
           >
@@ -43,7 +43,7 @@ export default function AppLayout() {
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors
                ${isActive
-                 ? 'bg-blue-50 text-blue-700 font-medium'
+                 ? 'bg-brand-50 text-brand-700 font-medium'
                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
             }
           >
@@ -55,7 +55,7 @@ export default function AppLayout() {
         {/* User footer */}
         <div className="px-3 py-3 border-t border-gray-100">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg mb-1">
-            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center
+            <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center
                             justify-center text-xs font-semibold flex-shrink-0">
               {(user?.username?.[0] || 'U').toUpperCase()}
             </div>

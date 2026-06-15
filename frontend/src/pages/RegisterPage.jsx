@@ -34,7 +34,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 mb-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-600 mb-4">
             <FlaskConical size={22} className="text-white" />
           </div>
           <h1 className="text-xl font-semibold text-gray-900">Create your account</h1>
@@ -93,7 +93,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-gray-500 mt-5">
           Already have an account?{' '}
-          <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/login" className="text-brand-600 hover:text-brand-700 font-medium">
             Sign in
           </Link>
         </p>

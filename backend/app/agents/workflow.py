@@ -1,10 +1,8 @@
 """
-LangGraph Workflow Orchestrator — 10-agent sequential research pipeline.
+LangGraph Workflow Orchestrator — Simplified Batch Processing Pipeline.
 
-Fixes:
-- Circular import removed: _task_store now lives in app.core.task_store
-- All node names prefixed with "step_" to avoid clashing with ResearchState
-  keys (LangGraph 0.2 raises ValueError if a node name == a state key).
+Fix: Replaced multi-node LLM calls with a single ComprehensiveAnalysisAgent
+     to reduce API costs and avoid rate limits. Handles 429 ResourceExhausted gracefully.
 """
 import asyncio
 from typing import List, Dict, Any, TypedDict, Optional
@@ -14,19 +12,9 @@ from loguru import logger
 
 from app.agents.search.agent         import PaperSearchAgent
 from app.agents.collection.agent     import PaperCollectionAgent
-from app.agents.processing.agent     import DocumentProcessingAgent
-from app.agents.summarization.agent  import SummarizationAgent
-from app.agents.findings.agent       import KeyFindingsAgent
-from app.agents.comparison.agent     import ComparisonAgent
-from app.agents.trends.agent         import TrendAnalysisAgent
-from app.agents.gaps.agent           import ResearchGapAgent
-from app.agents.review.agent         import LiteratureReviewAgent
-from app.agents.presentation.agent   import PresentationAgent
-from app.core.task_store             import _task_store
+from app.agents.comprehensive.agent  import ComprehensiveAnalysisAgent
 
-# ── Shared agent instances (avoids re-init of ChromaDB on every node call) ────
-_doc_processor = DocumentProcessingAgent()
-
+from app.utils.gemini_client         import RateLimitError
 
 # ── Graph State ────────────────────────────────────────────────────────────────
 
@@ -50,6 +38,7 @@ class ResearchState(TypedDict):
 
 def _update_progress(state: ResearchState, agent_name: str, pct: int) -> dict:
     """Write live progress back so the polling endpoint sees it instantly."""
+    from app.api.routes.agents import _task_store
     task_id = state.get("task_id", "")
     if task_id and task_id in _task_store:
         _task_store[task_id].update({
@@ -71,12 +60,12 @@ async def node_paper_search(state: ResearchState) -> dict:
     except Exception as e:
         logger.error(f"[Workflow] Paper Search failed: {e}")
         papers = []
-    prog = _update_progress(state, "Paper Search", 12)
+    prog = _update_progress(state, "Paper Search", 20)
     return {**prog, "papers": papers}
 
 
 async def node_paper_collection(state: ResearchState) -> dict:
-    _update_progress(state, "Paper Collection", 13)
+    _update_progress(state, "Paper Collection", 25)
     logger.info("[Workflow] Paper Collection")
     agent   = PaperCollectionAgent()
     updated = []
@@ -87,129 +76,34 @@ async def node_paper_collection(state: ResearchState) -> dict:
         except Exception as e:
             logger.warning(f"[Workflow] Collection failed for '{paper.get('title','')[:40]}': {e}")
             updated.append(paper)
-    prog = _update_progress(state, "Paper Collection", 22)
+    prog = _update_progress(state, "Paper Collection", 40)
     return {**prog, "papers": updated}
 
 
-async def node_document_processing(state: ResearchState) -> dict:
-    _update_progress(state, "Document Processing", 23)
-    logger.info("[Workflow] Document Processing")
-    updated = []
-    for i, paper in enumerate(state["papers"]):
-        try:
-            result = await _doc_processor.run(paper, i + 1, state["project_id"])
-            updated.append(result)
-        except Exception as e:
-            logger.warning(f"[Workflow] Processing failed for paper {i+1}: {e}")
-            updated.append(paper)
-    prog = _update_progress(state, "Document Processing", 35)
-    return {**prog, "papers": updated}
-
-
-async def node_summarization(state: ResearchState) -> dict:
-    _update_progress(state, "Summarization", 36)
-    logger.info("[Workflow] Summarization")
-    agent = SummarizationAgent()
-
-    async def safe_summarize(p):
-        try:
-            return await agent.run(p)
-        except Exception as e:
-            logger.warning(f"[Workflow] Summary failed: {e}")
-            return p
-
-    updated = await asyncio.gather(*[safe_summarize(p) for p in state["papers"]])
-    prog = _update_progress(state, "Summarization", 50)
-    return {**prog, "papers": list(updated)}
-
-
-async def node_key_findings(state: ResearchState) -> dict:
-    _update_progress(state, "Key Findings", 51)
-    logger.info("[Workflow] Key Findings")
-    agent = KeyFindingsAgent()
-
-    async def safe_findings(p):
-        try:
-            return await agent.run(p)
-        except Exception as e:
-            logger.warning(f"[Workflow] Findings failed: {e}")
-            return p
-
-    updated = await asyncio.gather(*[safe_findings(p) for p in state["papers"]])
-    prog = _update_progress(state, "Key Findings", 62)
-    return {**prog, "papers": list(updated)}
-
-
-async def node_comparison(state: ResearchState) -> dict:
-    _update_progress(state, "Comparison", 63)
-    logger.info("[Workflow] Comparison")
+async def node_comprehensive_analysis(state: ResearchState) -> dict:
+    _update_progress(state, "Comprehensive Analysis", 45)
+    logger.info("[Workflow] Comprehensive Analysis (Batch LLM Call)")
+    agent = ComprehensiveAnalysisAgent()
     try:
-        result = await ComparisonAgent().run(state["papers"])
+        result = await agent.run(state["papers"], state["topic"])
+    except RateLimitError as e:
+        logger.error(f"[Workflow] Halting pipeline due to RateLimitError: {e}")
+        raise e  # Let it bubble up to fail the task immediately
     except Exception as e:
-        logger.warning(f"[Workflow] Comparison failed: {e}")
-        result = ""
-    prog = _update_progress(state, "Comparison", 70)
-    return {**prog, "comparison": result}
+        logger.error(f"[Workflow] Halting pipeline due to API Error: {e}")
+        raise e
+    
+    prog = _update_progress(state, "Comprehensive Analysis", 80)
+    return {
+        **prog, 
+        "comparison": result.get("comparison", ""),
+        "trends": result.get("trends", ""),
+        "gaps": result.get("gaps", ""),
+        "literature_review": result.get("literature_review", {})
+    }
 
 
-async def node_trends(state: ResearchState) -> dict:
-    _update_progress(state, "Trend Analysis", 71)
-    logger.info("[Workflow] Trend Analysis")
-    try:
-        result = await TrendAnalysisAgent().run(state["papers"])
-    except Exception as e:
-        logger.warning(f"[Workflow] Trends failed: {e}")
-        result = ""
-    prog = _update_progress(state, "Trend Analysis", 77)
-    return {**prog, "trends": result}
 
-
-async def node_gaps(state: ResearchState) -> dict:
-    _update_progress(state, "Research Gaps", 78)
-    logger.info("[Workflow] Research Gaps")
-    try:
-        result = await ResearchGapAgent().run(state["papers"], state["topic"])
-    except Exception as e:
-        logger.warning(f"[Workflow] Gaps failed: {e}")
-        result = ""
-    prog = _update_progress(state, "Research Gaps", 84)
-    return {**prog, "gaps": result}
-
-
-async def node_literature_review(state: ResearchState) -> dict:
-    _update_progress(state, "Literature Review", 85)
-    logger.info("[Workflow] Literature Review")
-    try:
-        result = await LiteratureReviewAgent().run(
-            state["papers"], state["topic"],
-            comparison=state.get("comparison", ""),
-            trends=state.get("trends", ""),
-            gaps=state.get("gaps", ""),
-        )
-    except Exception as e:
-        logger.warning(f"[Workflow] Lit review failed: {e}")
-        result = {}
-    prog = _update_progress(state, "Literature Review", 93)
-    return {**prog, "literature_review": result}
-
-
-async def node_presentation(state: ResearchState) -> dict:
-    _update_progress(state, "Presentation", 94)
-    logger.info("[Workflow] Presentation")
-    try:
-        result = await PresentationAgent().run(
-            topic=state["topic"],
-            project_id=state["project_id"],
-            papers=state["papers"],
-            trends=state.get("trends", ""),
-            gaps=state.get("gaps", ""),
-            comparison=state.get("comparison", ""),
-        )
-    except Exception as e:
-        logger.warning(f"[Workflow] Presentation failed: {e}")
-        result = {}
-    prog = _update_progress(state, "Done", 100)
-    return {**prog, "presentation": result}
 
 
 # ── Build Graph ────────────────────────────────────────────────────────────────
@@ -217,28 +111,13 @@ async def node_presentation(state: ResearchState) -> dict:
 def build_research_graph():
     graph = StateGraph(ResearchState)
 
-    graph.add_node("step_paper_search",        node_paper_search)
-    graph.add_node("step_paper_collection",    node_paper_collection)
-    graph.add_node("step_document_processing", node_document_processing)
-    graph.add_node("step_summarization",       node_summarization)
-    graph.add_node("step_key_findings",        node_key_findings)
-    graph.add_node("step_comparison",          node_comparison)
-    graph.add_node("step_trends",              node_trends)
-    graph.add_node("step_gaps",                node_gaps)
-    graph.add_node("step_literature_review",   node_literature_review)
-    graph.add_node("step_presentation",        node_presentation)
-
+    graph.add_node("step_paper_search",          node_paper_search)
+    graph.add_node("step_paper_collection",      node_paper_collection)
+    graph.add_node("step_comprehensive_analysis", node_comprehensive_analysis)
     graph.set_entry_point("step_paper_search")
-    graph.add_edge("step_paper_search",        "step_paper_collection")
-    graph.add_edge("step_paper_collection",    "step_document_processing")
-    graph.add_edge("step_document_processing", "step_summarization")
-    graph.add_edge("step_summarization",       "step_key_findings")
-    graph.add_edge("step_key_findings",        "step_comparison")
-    graph.add_edge("step_comparison",          "step_trends")
-    graph.add_edge("step_trends",              "step_gaps")
-    graph.add_edge("step_gaps",                "step_literature_review")
-    graph.add_edge("step_literature_review",   "step_presentation")
-    graph.add_edge("step_presentation",        END)
+    graph.add_edge("step_paper_search",          "step_paper_collection")
+    graph.add_edge("step_paper_collection",      "step_comprehensive_analysis")
+    graph.add_edge("step_comprehensive_analysis", END)
 
     return graph.compile()
 

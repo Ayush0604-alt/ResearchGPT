@@ -126,8 +126,8 @@ export default function NewProjectPage() {
               type="button"
               onClick={() => setForm(f => ({ ...f, topic: ex }))}
               className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg
-                         text-gray-600 hover:border-blue-300 hover:text-blue-600
-                         hover:bg-blue-50 transition-colors"
+                         text-gray-600 hover:border-brand-300 hover:text-brand-600
+                         hover:bg-brand-50 transition-colors"
             >
               {ex}
             </button>

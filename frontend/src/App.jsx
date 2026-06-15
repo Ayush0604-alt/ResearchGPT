@@ -9,7 +9,7 @@ import NewProjectPage    from './pages/NewProjectPage'
 import ProjectPage       from './pages/ProjectPage'
 import ChatPage          from './pages/ChatPage'
 import ReviewPage        from './pages/ReviewPage'
-import PresentationPage  from './pages/PresentationPage'
+
 
 // Layout
 import AppLayout from './components/layout/AppLayout'
@@ -34,7 +34,7 @@ export default function App() {
         <Route path="project/:id"              element={<ProjectPage />} />
         <Route path="project/:id/chat"         element={<ChatPage />} />
         <Route path="project/:id/review"       element={<ReviewPage />} />
-        <Route path="project/:id/presentation" element={<PresentationPage />} />
+
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

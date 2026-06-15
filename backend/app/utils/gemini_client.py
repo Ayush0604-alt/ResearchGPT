@@ -2,48 +2,58 @@
 Gemini 2.5 Flash client — singleton model instance shared across agents.
 
 Fixes:
-- genai.configure() deferred until first call (not at import time) to avoid
-  issues when settings aren't fully loaded at module import.
-- Added fallback for both old (google-generativeai) and new (google-genai) SDK styles.
-- generate_content_async wrapped with proper error handling.
+- Migrated from legacy `google-generativeai` to the new `google-genai` SDK.
+- The new SDK uses REST natively and bypasses the `grpcio` Python 3.13 Windows issue!
 """
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from loguru import logger
 from app.core.config import settings
 
-_model = None
+_client = None
 
 
-def _get_model():
-    """Lazily initialise the Gemini model on first call."""
-    global _model
-    if _model is None:
+def _get_client():
+    """Lazily initialise the Gemini client on first call."""
+    global _client
+    if _client is None:
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set in environment")
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        _model = genai.GenerativeModel(model_name=settings.GEMINI_MODEL)
-        logger.info(f"[Gemini] Model initialised: {settings.GEMINI_MODEL}")
-    return _model
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        logger.info(f"[Gemini] Client initialised for: {settings.GEMINI_MODEL}")
+    return _client
 
 
-async def ask_gemini(prompt: str, max_tokens: int = 4096) -> str:
+class RateLimitError(Exception):
+    """Raised when the Gemini API returns a 429 ResourceExhausted error."""
+    pass
+
+
+async def ask_gemini(prompt: str, max_tokens: int = 4096, response_schema=None) -> str:
     """
     Send a prompt to Gemini and return the text response.
     Raises on API errors so callers can handle gracefully.
     """
-    model = _get_model()
+    client = _get_client()
     try:
-        generation_config = genai.GenerationConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.3,
+        config_kwargs = {
+            "max_output_tokens": max_tokens,
+            "temperature": 0.3,
+        }
+        if response_schema:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_schema"] = response_schema
+            
+        response = await client.aio.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(**config_kwargs)
         )
-        response = await model.generate_content_async(
-            prompt,
-            generation_config=generation_config,
-        )
-        # response.text raises ValueError if content was blocked by safety filters
         text = response.text
         return text.strip() if text else ""
     except Exception as e:
+        error_str = str(e)
         logger.error(f"[Gemini] API error: {type(e).__name__}: {e}")
+        if "429" in error_str or "ResourceExhausted" in type(e).__name__ or "ResourceExhausted" in error_str:
+            raise RateLimitError("Gemini API rate limit exceeded (429 ResourceExhausted).") from e
         raise

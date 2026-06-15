@@ -11,7 +11,7 @@ import { projectsAPI, agentsAPI, papersAPI } from '../services/api'
 const STEPS = [
   'Paper Search', 'Paper Collection', 'Doc Processing', 'Summarization',
   'Key Findings', 'Comparison', 'Trend Analysis', 'Research Gaps',
-  'Lit. Review', 'Presentation',
+  'Lit. Review'
 ]
 
 const SOURCE_LABELS = {
@@ -107,7 +107,7 @@ export default function ProjectPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-48">
-      <Loader2 className="animate-spin text-blue-500" size={24} />
+      <Loader2 className="animate-spin text-brand-500" size={24} />
     </div>
   )
 
@@ -150,9 +150,6 @@ export default function ProjectPage() {
                 <Link to={`/project/${id}/review`} className="btn-secondary btn-sm">
                   <BookOpen size={13} /> Review
                 </Link>
-                <Link to={`/project/${id}/presentation`} className="btn-secondary btn-sm">
-                  <Presentation size={13} /> Slides
-                </Link>
               </>
             )}
             {(isPending || isFailed) && (
@@ -174,7 +171,7 @@ export default function ProjectPage() {
       {/* Status pill */}
       <div className="flex items-center gap-2">
         {isPending   && <span className="badge-amber"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Ready to run</span>}
-        {isRunning   && <span className="badge-blue"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" /> Running</span>}
+        {isRunning   && <span className="badge-blue"><span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Running</span>}
         {isCompleted && <span className="badge-green"><CheckCircle size={11} /> Completed · {papers.length} papers</span>}
         {isFailed    && <span className="badge-red"><XCircle size={11} /> Failed</span>}
       </div>
@@ -192,7 +189,7 @@ export default function ProjectPage() {
           {/* Progress bar */}
           <div className="w-full h-1.5 bg-gray-100 rounded-full mb-5 overflow-hidden">
             <div
-              className="h-1.5 bg-blue-500 rounded-full transition-all duration-700"
+              className="h-1.5 bg-brand-500 rounded-full transition-all duration-700"
               style={{ width: `${taskStatus?.progress ?? 0}%` }}
             />
           </div>
@@ -207,7 +204,7 @@ export default function ProjectPage() {
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs
                     transition-all duration-300
                     ${done   ? 'bg-green-500 text-white'
-                    : active ? 'bg-blue-500 text-white ring-2 ring-blue-200'
+                    : active ? 'bg-brand-500 text-white ring-2 ring-brand-200'
                     :          'bg-gray-100 text-gray-400'}`}>
                     {done ? <CheckCircle size={12} /> : i + 1}
                   </div>
@@ -258,7 +255,7 @@ export default function ProjectPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                          className="p-1 text-gray-400 hover:text-brand-500 transition-colors"
                         >
                           <ExternalLink size={13} />
                         </a>

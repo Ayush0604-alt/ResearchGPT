@@ -53,11 +53,6 @@ export const papersAPI = {
   findings:  (pid) => api.get(`/papers/${pid}/findings`),
 }
 
-// ── RAG ───────────────────────────────────────────────────────────────────────
-export const ragAPI = {
-  query: (data) => api.post('/rag/query', data),
-}
-
 // ── Reviews ───────────────────────────────────────────────────────────────────
 export const reviewsAPI = {
   get:      (pid) => api.get(`/reviews/${pid}`),
@@ -65,18 +60,11 @@ export const reviewsAPI = {
   markdown: (pid) => api.get(`/reviews/${pid}/markdown`, { responseType: 'text' }),
 }
 
-// ── Presentations ─────────────────────────────────────────────────────────────
-export const presentationsAPI = {
-  get: (pid) => api.get(`/presentations/${pid}`),
-  // FIX: responseType: 'arraybuffer' is more reliable than 'blob' for binary downloads
-  download: (pid) =>
-    api.get(`/presentations/${pid}/download`, { responseType: 'arraybuffer' }),
-}
-
 // ── Chat ──────────────────────────────────────────────────────────────────────
 export const chatAPI = {
   history: (pid) => api.get(`/chat/history/${pid}`),
   clear:   (pid) => api.delete(`/chat/history/${pid}`),
+  query:   (data) => api.post('/chat/query', data),
 }
 
 export default api

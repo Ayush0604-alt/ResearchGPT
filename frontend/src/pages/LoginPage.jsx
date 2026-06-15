@@ -32,7 +32,7 @@ export default function LoginPage() {
         {/* Brand mark */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl
-                          bg-blue-600 mb-4">
+                          bg-brand-600 mb-4">
             <FlaskConical size={22} className="text-white" />
           </div>
           <h1 className="text-xl font-semibold text-gray-900">Sign in to ResearchGPT</h1>
@@ -80,7 +80,7 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-gray-500 mt-5">
           Don't have an account?{' '}
-          <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/register" className="text-brand-600 hover:text-brand-700 font-medium">
             Create one
           </Link>
         </p>
