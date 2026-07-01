@@ -2,8 +2,6 @@
 
 An AI-powered research assistant that lets you query, summarize, and reason over research papers and documents through a conversational interface — built with a FastAPI backend, a LangGraph-orchestrated agent pipeline, and a React frontend.
 
-> ⚠️ Note: I put this together from what I know of the project's architecture and decisions. Swap in your actual project structure, env vars, and endpoint names before committing — placeholders are marked below.
-
 ---
 
 ## Overview
