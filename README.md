@@ -137,16 +137,9 @@ The app should now be running at `http://localhost:5173` (or your configured por
 - **Async SQLAlchemy**: chosen to keep the API non-blocking under concurrent document uploads/queries, matching FastAPI's async model end-to-end.
 - **Ownership checks at the API layer**: every document/query resource is scoped to its owning user, enforced server-side rather than trusted from the client.
 
-## Roadmap
-
-- [ ] Add streaming responses
-- [ ] Multi-document cross-referencing
-- [ ] Citation confidence scoring
 
 ## Author
 
 Built by [Ayush](https://github.com/Ayush0604-alt).
 
 ## License
-
-MIT (or your preferred license)
