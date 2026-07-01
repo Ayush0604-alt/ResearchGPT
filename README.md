@@ -1,24 +1,61 @@
-# ResearchGPT 🔬
+# ResearchGPT
 
-> Production-grade AI Research Assistant Platform — automates the full research workflow from paper discovery to literature review and presentation generation.
+An AI-powered research assistant that lets you query, summarize, and reason over research papers and documents through a conversational interface — built with a FastAPI backend, a LangGraph-orchestrated agent pipeline, and a React frontend.
+
+> ⚠️ Note: I put this together from what I know of the project's architecture and decisions. Swap in your actual project structure, env vars, and endpoint names before committing — placeholders are marked below.
 
 ---
+
+## Overview
+
+ResearchGPT takes unstructured research content (papers, documents, queries) and runs it through a retrieval-augmented, multi-step LLM pipeline to produce grounded, cited answers rather than raw model guesses. The system is built as a full-stack app: a Python backend that owns the retrieval/agent logic, and a React frontend for interaction.
+
+## Features
+
+- Conversational Q&A over uploaded research documents
+- Retrieval-augmented generation backed by a vector store (ChromaDB)
+- Multi-step reasoning pipeline orchestrated with LangGraph
+- Ownership-scoped access — users can only read/query their own documents
+- Structured error handling throughout the API (no silent failures / raw stack traces to the client)
+
+## Architecture
+
+The core agent pipeline is built with **LangGraph**. It was originally designed as a 10-node graph (separate nodes for query parsing, retrieval, re-ranking, summarization, citation extraction, etc.), but was deliberately simplified down to a **3-node pipeline with batched Gemini calls**.
+
+This wasn't a shortcut — it was a trade-off made after the 10-node version showed diminishing returns: more nodes meant more round-trips to the LLM, higher latency, and more surface area for state-management bugs, without a meaningful quality improvement over batching the same work into fewer, denser calls. The 3-node version:
+
+1. **Ingest & retrieve** — parses the query, pulls relevant chunks from ChromaDB
+2. **Reason & generate** — a single batched Gemini call that handles synthesis + citation grounding together, instead of splitting these across separate nodes
+3. **Post-process & respond** — formats the response, attaches sources, returns to the client
+
+```
+User Query
+   │
+   ▼
+[1] Ingest & Retrieve  ──►  ChromaDB (vector search)
+   │
+   ▼
+[2] Reason & Generate  ──►  Gemini (batched call)
+   │
+   ▼
+[3] Post-process & Respond
+   │
+   ▼
+Client (React)
+```
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 18 + Vite + TailwindCSS |
-| Backend | FastAPI + Python 3.11 |
-| AI Orchestration | LangGraph |
-| LLM | Gemini 2.5 Flash |
-| Database | PostgreSQL |
-| Vector DB | ChromaDB (Pinecone-ready) |
-| Storage | Local (S3-ready) |
-| Migrations | Alembic |
-| ORM | SQLAlchemy |
+**Backend**
+- FastAPI (async)
+- LangGraph — agent orchestration
+- Google Gemini — LLM
+- ChromaDB — vector store for embeddings/retrieval
+- SQLAlchemy (async) — relational data (users, documents, ownership)
 
----
+**Frontend**
+- React
+- (add your bundler/styling — e.g. Vite, TailwindCSS — if applicable)
 
 ## Project Structure
 
@@ -26,199 +63,90 @@
 ResearchGPT/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/          # FastAPI route handlers
-│   │   ├── agents/              # 10 LangGraph agents
-│   │   ├── core/                # Config, security, logging
-│   │   ├── db/                  # DB session, base
-│   │   ├── models/              # SQLAlchemy ORM models
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── services/            # Business logic layer
-│   │   ├── rag/                 # RAG pipeline
-│   │   └── utils/               # Helpers
-│   ├── alembic/                 # DB migrations
-│   ├── storage/pdfs/            # Downloaded PDFs
-│   ├── .env                     # Environment variables
+│   │   ├── api/            # FastAPI route handlers
+│   │   ├── agents/          # LangGraph pipeline (3-node graph)
+│   │   ├── models/           # SQLAlchemy models
+│   │   ├── services/         # ChromaDB, Gemini client wrappers
+│   │   └── main.py
 │   ├── requirements.txt
-│   └── main.py
+│   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/          # Reusable UI components
-│   │   ├── pages/               # Route-level pages
-│   │   ├── hooks/               # Custom React hooks
-│   │   ├── services/            # API client functions
-│   │   ├── store/               # Zustand state management
-│   │   └── styles/              # Global CSS
+│   │   ├── components/
+│   │   ├── pages/
+│   │   └── App.jsx
 │   ├── package.json
-│   └── vite.config.js
-└── docker-compose.yml
+│   └── .env.example
+└── README.md
 ```
+*(adjust to match your actual folder names)*
 
----
+## Getting Started
 
-## Prerequisites
-
-- Python 3.11+
+### Prerequisites
+- Python 3.10+
 - Node.js 18+
-- PostgreSQL 15+
-- Google Gemini API Key → https://aistudio.google.com/app/apikey
+- A Gemini API key
 
----
-
-## Quick Start
-
-### 1. Clone & Navigate
-
-```bash
-git clone <your-repo-url>
-cd ResearchGPT
-```
-
-### 2. Backend Setup
+### Backend Setup
 
 ```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Copy environment file and fill in values
-cp .env.example .env
-# Edit .env with your API keys and DB credentials
-
-# Create PostgreSQL database
-createdb researchgpt
-# Or via psql: CREATE DATABASE researchgpt;
-
-# Run migrations
-alembic upgrade head
-
-# Start backend
-uvicorn main:app --reload --port 8000
 ```
 
-Backend runs at: http://localhost:8000
-API Docs at: http://localhost:8000/docs
+Create a `.env` file:
 
-### 3. Frontend Setup
+```
+GEMINI_API_KEY=your_gemini_api_key
+DATABASE_URL=your_database_url
+CHROMA_DB_PATH=./chroma_data
+```
+
+Run the backend:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### Frontend Setup
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
 
-Frontend runs at: http://localhost:5173
+The app should now be running at `http://localhost:5173` (or your configured port), talking to the backend at `http://localhost:8000`.
 
-### 4. Docker (Optional — All-in-One)
+## API Overview
 
-```bash
-# From project root
-docker-compose up --build
-```
+*(fill in with your actual routes — example shape below)*
 
----
+| Method | Endpoint            | Description                          |
+|--------|----------------------|---------------------------------------|
+| POST   | `/api/documents`     | Upload a document for indexing        |
+| POST   | `/api/query`         | Submit a query, get a grounded answer |
+| GET    | `/api/documents/{id}`| Fetch document metadata               |
 
-## Environment Variables
+## Design Decisions
 
-Copy `backend/.env.example` to `backend/.env` and fill in:
+- **3 nodes over 10**: prioritized lower latency and simpler state management over granular pipeline observability, since batched Gemini calls handled synthesis + citation grounding well enough together.
+- **Async SQLAlchemy**: chosen to keep the API non-blocking under concurrent document uploads/queries, matching FastAPI's async model end-to-end.
+- **Ownership checks at the API layer**: every document/query resource is scoped to its owning user, enforced server-side rather than trusted from the client.
 
-```env
-# Required
-GEMINI_API_KEY=your_gemini_api_key_here
-DATABASE_URL=postgresql://user:password@localhost:5432/researchgpt
-SECRET_KEY=your_jwt_secret_key_here_min_32_chars
+## Roadmap
 
-# Optional — leave defaults for local dev
-CHROMA_PERSIST_DIR=./storage/chroma
-PDF_STORAGE_DIR=./storage/pdfs
-CORS_ORIGINS=["http://localhost:5173"]
+- [ ] Add streaming responses
+- [ ] Multi-document cross-referencing
+- [ ] Citation confidence scoring
 
-# Future: AWS S3
-# AWS_ACCESS_KEY_ID=
-# AWS_SECRET_ACCESS_KEY=
-# AWS_S3_BUCKET=
+## Author
 
-# Future: Pinecone
-# PINECONE_API_KEY=
-# PINECONE_ENVIRONMENT=
-```
+Built by [Ayush](https://github.com/Ayush0604-alt).
 
----
+## License
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/auth/register | Register user |
-| POST | /api/auth/login | Login, get JWT |
-| GET | /api/projects | List projects |
-| POST | /api/projects | Create project |
-| GET | /api/projects/{id} | Get project |
-| POST | /api/agents/run | Run full workflow |
-| GET | /api/agents/status/{task_id} | Poll task status |
-| GET | /api/papers/{project_id} | List papers |
-| POST | /api/rag/query | Ask RAG question |
-| GET | /api/reviews/{project_id} | Get lit review |
-| GET | /api/presentations/{project_id}/download | Download PPTX |
-| GET | /api/chat/history/{project_id} | Chat history |
-
-Full interactive docs: http://localhost:8000/docs
-
----
-
-## Agent Pipeline
-
-```
-Research Topic
-     │
-     ▼
-[Agent 1] Paper Search      ── Semantic Scholar + ArXiv + PubMed
-     │
-     ▼
-[Agent 2] Paper Collection  ── Download PDFs, store metadata
-     │
-     ▼
-[Agent 3] Doc Processing    ── Extract text, chunk, embed → ChromaDB
-     │
-     ▼
-[Agent 4] Summarization     ── Per-paper summaries via Gemini
-     │
-     ▼
-[Agent 5] Key Findings      ── Structured JSON extraction
-     │
-     ▼
-[Agent 6] Comparison        ── Cross-paper comparison tables
-     │
-     ▼
-[Agent 7] Trend Analysis    ── Emerging models/datasets/trends
-     │
-     ▼
-[Agent 8] Research Gaps     ── Limitations + future directions
-     │
-     ▼
-[Agent 9] Literature Review ── Full Markdown survey
-     │
-     ▼
-[Agent 10] Presentation     ── PPTX export
-```
-
----
-
-## Features
-
-- 🔐 JWT Authentication
-- 📄 Multi-source paper search (Semantic Scholar, ArXiv, PubMed)
-- 🤖 10-agent LangGraph workflow
-- 💬 RAG-powered conversational Q&A with citations
-- 📊 Literature review generation
-- 📑 PowerPoint export
-- 🔄 Async task processing with status polling
-- 📦 Modular, production-ready codebase
+MIT (or your preferred license)
