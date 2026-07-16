@@ -1,143 +1,76 @@
-# ResearchGPT
+<div align="center">
+  
+# 🔬 ResearchGPT
 
-An AI-powered research assistant that lets you query, summarize, and reason over research papers and documents through a conversational interface — built with a FastAPI backend, a LangGraph-orchestrated agent pipeline, and a React frontend.
+**Production-grade AI Research Assistant Platform**
+
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![PostgreSQL](https://img.shields.io/badge/postgresql-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Gemini](https://img.shields.io/badge/Gemini-%238E75B2.svg?style=for-the-badge&logo=googlebard&logoColor=white)](https://aistudio.google.com/)
+
+*An AI-powered research assistant that lets you query, summarize, and reason over research papers and documents through a conversational interface.*
+
+</div>
 
 ---
 
-## Overview
+## 📖 Overview
 
 ResearchGPT takes unstructured research content (papers, documents, queries) and runs it through a retrieval-augmented, multi-step LLM pipeline to produce grounded, cited answers rather than raw model guesses. The system is built as a full-stack app: a Python backend that owns the retrieval/agent logic, and a React frontend for interaction.
 
-## Features
+---
 
-- Conversational Q&A over uploaded research documents
-- Retrieval-augmented generation backed by a vector store (ChromaDB)
-- Multi-step reasoning pipeline orchestrated with LangGraph
-- Ownership-scoped access — users can only read/query their own documents
-- Structured error handling throughout the API (no silent failures / raw stack traces to the client)
+## 🚀 Tech Stack
 
-## Architecture
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18 + Vite + TailwindCSS |
+| **Backend** | FastAPI (async) + Python 3.11 |
+| **AI Orchestration** | LangGraph |
+| **LLM** | Google Gemini 2.5 Flash |
+| **Database** | PostgreSQL |
+| **Vector DB** | ChromaDB (Pinecone-ready) |
+| **Storage** | Local (S3-ready) |
+| **Migrations** | Alembic |
+| **ORM** | SQLAlchemy (async) |
 
-The core agent pipeline is built with **LangGraph**. It was originally designed as a 10-node graph (separate nodes for query parsing, retrieval, re-ranking, summarization, citation extraction, etc.), but was deliberately simplified down to a **3-node pipeline with batched Gemini calls**.
+---
 
-This wasn't a shortcut — it was a trade-off made after the 10-node version showed diminishing returns: more nodes meant more round-trips to the LLM, higher latency, and more surface area for state-management bugs, without a meaningful quality improvement over batching the same work into fewer, denser calls. The 3-node version:
+## 🧠 Architecture & Agent Pipeline
 
-1. **Ingest & retrieve** — parses the query, pulls relevant chunks from ChromaDB
-2. **Reason & generate** — a single batched Gemini call that handles synthesis + citation grounding together, instead of splitting these across separate nodes
-3. **Post-process & respond** — formats the response, attaches sources, returns to the client
+### The Agentic Workflow Deep Dive
 
-```
-User Query
-   │
-   ▼
-[1] Ingest & Retrieve  ──►  ChromaDB (vector search)
-   │
-   ▼
-[2] Reason & Generate  ──►  Gemini (batched call)
-   │
-   ▼
-[3] Post-process & Respond
-   │
-   ▼
-Client (React)
-```
+The core agent pipeline is built with **LangGraph**. It was originally designed as a 10-node graph, but was deliberately simplified down to a **3-node pipeline with batched Gemini calls**.
 
-## Tech Stack
+This wasn't a shortcut — it was a trade-off made after the 10-node version showed diminishing returns: more nodes meant more round-trips to the LLM, higher latency, and more surface area for state-management bugs, without a meaningful quality improvement over batching the same work into fewer, denser calls.
 
-**Backend**
-- FastAPI (async)
-- LangGraph — agent orchestration
-- Google Gemini — LLM
-- ChromaDB — vector store for embeddings/retrieval
-- SQLAlchemy (async) — relational data (users, documents, ownership)
+The optimized 3-node version manages a state dictionary (`ResearchState`) containing the topic, papers list, extracted trends, gaps, and literature review.
 
-**Frontend**
-- React
-- (add your bundler/styling — e.g. Vite, TailwindCSS — if applicable)
+1. **Paper Search (`PaperSearchAgent`)**
+   - Parses the user's research topic.
+   - Concurrently searches academic databases (Semantic Scholar, ArXiv, PubMed) via APIs.
+   - Returns a deduplicated list of top matching paper metadata.
+2. **Paper Collection (`PaperCollectionAgent`)**
+   - Iterates through the discovered papers.
+   - Downloads the raw PDFs to the local storage layer (`/storage/pdfs`).
+   - Extracts text, chunks it, and indexes it into ChromaDB for RAG conversational queries.
+3. **Comprehensive Analysis (`ComprehensiveAnalysisAgent`)**
+   - A single batched Gemini call that handles multiple reasoning steps concurrently.
+   - Extracts structured JSON representing the methodology, datasets, accuracy, contributions, and limitations for each paper.
+   - Synthesizes cross-paper trends, identifies research gaps, and drafts a comprehensive literature review.
 
-## Project Structure
-
-```
-ResearchGPT/
-├── backend/
-│   ├── app/
-│   │   ├── api/            # FastAPI route handlers
-│   │   ├── agents/          # LangGraph pipeline (3-node graph)
-│   │   ├── models/           # SQLAlchemy models
-│   │   ├── services/         # ChromaDB, Gemini client wrappers
-│   │   └── main.py
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   └── App.jsx
-│   ├── package.json
-│   └── .env.example
-└── README.md
-```
-*(adjust to match your actual folder names)*
-
-## Getting Started
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- A Gemini API key
-
-### Backend Setup
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Create a `.env` file:
-
-```
-GEMINI_API_KEY=your_gemini_api_key
-DATABASE_URL=your_database_url
-CHROMA_DB_PATH=./chroma_data
-```
-
-Run the backend:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The app should now be running at `http://localhost:5173` (or your configured port), talking to the backend at `http://localhost:8000`.
-
-## API Overview
-
-*(fill in with your actual routes — example shape below)*
-
-| Method | Endpoint            | Description                          |
-|--------|----------------------|---------------------------------------|
-| POST   | `/api/documents`     | Upload a document for indexing        |
-| POST   | `/api/query`         | Submit a query, get a grounded answer |
-| GET    | `/api/documents/{id}`| Fetch document metadata               |
-
-## Design Decisions
-
-- **3 nodes over 10**: prioritized lower latency and simpler state management over granular pipeline observability, since batched Gemini calls handled synthesis + citation grounding well enough together.
-- **Async SQLAlchemy**: chosen to keep the API non-blocking under concurrent document uploads/queries, matching FastAPI's async model end-to-end.
-- **Ownership checks at the API layer**: every document/query resource is scoped to its owning user, enforced server-side rather than trusted from the client.
-
-
-## Author
-
-Built by [Ayush](https://github.com/Ayush0604-alt).
-
-## License
+```text
+Research Topic
+     │
+     ▼
+[Agent 1] Paper Search              ── Semantic Scholar + ArXiv + PubMed
+     │
+     ▼
+[Agent 2] Paper Collection          ── Download PDFs, store metadata & chunk to Vector DB
+     │
+     ▼
+[Agent 3] Comprehensive Analysis    ── Batch processing via Gemini (Summarization, Trends, Gaps, Review)
