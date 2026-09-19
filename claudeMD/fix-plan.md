@@ -24,14 +24,25 @@ Phase 0 Prep ─► Phase 1 Safe ─► Phase 2 Foundation ─► Phase 3 BYOK �
 
 ## Phase 0: Preparation (no behaviour change)
 
-### ☐ Step 1: Record a baseline
+### ◐ Step 1: Record a baseline
 - Commit the `claudeMD/` folder. Decide what to do with the uncommitted `README.md` edits: stash them, because Step 30 rewrites the README anyway.
 - Create a working branch, for example `fix/phase-1`.
 - Run the app once locally (backend, frontend, one full pipeline run) and write down anything that is already broken.
 
 **Done when:** you have a clean git status and one pipeline run completes locally.
 
-### ☐ Step 2: Linting and formatting · I§5
+> **Progress (2026-09-19):**
+> - The paused rebase was finished, with the README committed as it was in the working copy (`de36b65`).
+> - Work continues on branch `fix/phase-0`, and the docs are committed.
+> - **Still open:** the baseline pipeline run. It was not done automatically, because `.env` points at a hosted Neon database with real data and a real Gemini key, and a run would write to that database and spend the key's quota. Run it yourself, or point `.env` at the local Compose `db` service first.
+
+### ☑ Step 2: Linting and formatting · I§5
+
+> **Done.** Deviations from the plan:
+> - ESLint 10 is used **without** `eslint-plugin-react`, which does not support ESLint 10 yet. ESLint 10 tracks JSX usage by itself, which was the main reason for that plugin here.
+> - `react-hooks/set-state-in-effect` is set to *warn* until Step 17 replaces the fetch-in-`useEffect` code.
+> - Formatting is in separate commits: `65d7c44` (backend) and `3bbd3fe` (frontend).
+
 - Backend: add `ruff` for linting and formatting, with a `pyproject.toml` config.
 - Frontend: add ESLint (react and react-hooks plugins) and Prettier, with `lint` and `format` npm scripts.
 - Add `pre-commit` hooks for both.
@@ -39,14 +50,20 @@ Phase 0 Prep ─► Phase 1 Safe ─► Phase 2 Foundation ─► Phase 3 BYOK �
 
 **Done when:** `ruff check .` and `npm run lint` pass.
 
-### ☐ Step 3: Backend test harness · I§5
+### ☑ Step 3: Backend test harness · I§5
+
+> **Done.** It uses a Compose `test` profile (`docker compose --profile test up -d test-db`, postgres on port 55432 with in-memory storage) instead of pytest-postgresql, because Windows has no local Postgres binaries. `conftest.py` refuses to run against any non-local database host. 8 tests pass.
+
 - Add `pytest-asyncio`, `httpx` (`AsyncClient` + `ASGITransport`), `respx` and `pytest-postgresql` (or testcontainers).
 - Write fixtures that create a test database (run `alembic upgrade head` against it) and the helpers `make_user()` and `auth_headers(user)`.
 - Write smoke tests for register, login, `/auth/me` and project CRUD.
 
 **Done when:** `pytest` passes locally with at least 5 tests.
 
-### ☐ Step 4: CI · I§5
+### ◐ Step 4: CI · I§5
+
+> **Written** in `.github/workflows/ci.yml` (it also runs `ruff format --check` and `npm run format:check`). **Not yet verified:** the branch hasn't been pushed, so CI has not run.
+
 Add a GitHub Actions workflow with two jobs:
 - **backend:** a Postgres service container, then `ruff check`, then `pytest`
 - **frontend:** `npm ci`, `npm run lint`, `npm run build`
@@ -167,7 +184,7 @@ Use Alembic autogenerate, then review the result by hand:
 - Add **TanStack Query**. Replace the hand-written data fetching and `setInterval` polling with `useQuery`, where `refetchInterval` stops on a terminal status or a 404 and pauses while the tab is hidden.
 - Add **Vitest** + Testing Library, with a first test for the polling logic.
 
-**Done when:** every page behaves as before, `npm run build`, `tsc --noEmit` and `vitest` pass, and there are no `setInterval` calls in `pages/`.
+**Done when:** every page behaves as before, `npm run build`, `tsc --noEmit` and `vitest` pass, there are no `setInterval` calls in `pages/`, and `react-hooks/set-state-in-effect` is set back to `error` in `eslint.config.js`.
 
 ---
 
