@@ -4,10 +4,11 @@ Projects Routes: /api/projects
 Fix: delete route was missing await db.commit() — same bug as chat.py.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_owned_project
 from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import ResearchProject
@@ -50,37 +51,14 @@ async def list_projects(
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-async def get_project(
-    project_id: int,
-    db: AsyncSession = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-):
-    result = await db.execute(
-        select(ResearchProject).where(
-            ResearchProject.id == project_id,
-            ResearchProject.user_id == user_id,
-        )
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(404, "Project not found")
+async def get_project(project: ResearchProject = Depends(get_owned_project)):
     return project
 
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
-    project_id: int,
+    project: ResearchProject = Depends(get_owned_project),
     db: AsyncSession = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
 ):
-    result = await db.execute(
-        select(ResearchProject).where(
-            ResearchProject.id == project_id,
-            ResearchProject.user_id == user_id,
-        )
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(404, "Project not found")
     await db.delete(project)
     await db.commit()  # FIX: explicit commit required for 204 responses

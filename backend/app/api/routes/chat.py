@@ -11,9 +11,10 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_owned_project, load_owned_project
 from app.core.security import get_current_user_id
 from app.db.session import get_db
-from app.models.models import ChatMessage, Paper
+from app.models.models import ChatMessage, Paper, ResearchProject
 from app.schemas.schemas import ChatHistoryOut
 from app.utils.gemini_client import ask_gemini
 
@@ -27,13 +28,12 @@ class ChatQuery(BaseModel):
 
 @router.get("/history/{project_id}", response_model=ChatHistoryOut)
 async def get_chat_history(
-    project_id: int,
+    project: ResearchProject = Depends(get_owned_project),
     db: AsyncSession = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
 ):
     result = await db.execute(
         select(ChatMessage)
-        .where(ChatMessage.project_id == project_id)
+        .where(ChatMessage.project_id == project.id)
         .order_by(ChatMessage.created_at.asc())
     )
     messages = result.scalars().all()
@@ -42,16 +42,15 @@ async def get_chat_history(
 
 @router.delete("/history/{project_id}", status_code=204)
 async def clear_chat_history(
-    project_id: int,
+    project: ResearchProject = Depends(get_owned_project),
     db: AsyncSession = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
 ):
     # FIX: use bulk DELETE instead of load-then-delete, and ensure commit runs.
     # The original code fetched all rows then called db.delete() per row but
     # never committed — get_db() only commits on the yield path when no
     # exception is raised, but 204 responses have no body so some ASGI paths
     # skipped the commit.
-    await db.execute(delete(ChatMessage).where(ChatMessage.project_id == project_id))
+    await db.execute(delete(ChatMessage).where(ChatMessage.project_id == project.id))
     # Explicit commit ensures the bulk delete is persisted regardless of
     # how the response is finalized.
     await db.commit()
@@ -63,6 +62,8 @@ async def chat_query(
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
+    await load_owned_project(db, body.project_id, user_id)
+
     # Save user message
     user_msg = ChatMessage(project_id=body.project_id, role="user", content=body.question)
     db.add(user_msg)

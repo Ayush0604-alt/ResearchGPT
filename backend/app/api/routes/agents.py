@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.workflow import run_research_workflow
+from app.api.deps import load_owned_project
 from app.core.security import get_current_user_id
 from app.core.task_store import _task_store
 from app.db.session import AsyncSessionLocal, get_db
@@ -42,15 +43,7 @@ async def run_agents(
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    result = await db.execute(
-        select(ResearchProject).where(
-            ResearchProject.id == body.project_id,
-            ResearchProject.user_id == user_id,
-        )
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = await load_owned_project(db, body.project_id, user_id)
 
     # Only block if CURRENTLY running — allow re-runs of failed/completed projects
     if project.status == ProjectStatus.RUNNING.value:
