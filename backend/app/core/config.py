@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/researchgpt"
     SYNC_DATABASE_URL: str = "postgresql+psycopg://postgres:password@localhost:5432/researchgpt"
 
+    # ── Paper search (server-owned keys for free data APIs; not LLM keys) ──────
+    CONTACT_EMAIL: str = ""  # sent to OpenAlex (polite pool) and required by Unpaywall
+    SEMANTIC_SCHOLAR_API_KEY: str = ""  # optional; raises S2 rate limits
+    OPENALEX_API_KEY: str = ""  # optional
+
     # ── Paper collection ───────────────────────────────────────────────────────
     # PDFs are read in memory and discarded; only extracted text is stored.
     MAX_PDF_SIZE_MB: int = 25
@@ -75,10 +80,6 @@ class Settings(BaseSettings):
 
     # ── CORS ───────────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
-
-    # ── Rate Limits ────────────────────────────────────────────────────────────
-    MAX_PAPERS_PER_SEARCH: int = 20
-    MAX_PAPERS_TO_DOWNLOAD: int = 10
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

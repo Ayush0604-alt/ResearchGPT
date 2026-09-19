@@ -18,10 +18,10 @@ from loguru import logger
 from sqlalchemy import delete, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.search.agent import PaperSearchAgent
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.models import LiteratureReview, Paper, ProjectStatus, ResearchProject
+from app.services.search import search_papers
 from app.utils.pdf_text import extract_pdf_text
 from app.utils.safe_http import USER_AGENT, fetch_public
 
@@ -114,7 +114,7 @@ async def _heartbeat(project_id: int) -> None:
 
 
 async def default_search(topic: str, max_papers: int) -> List[Dict[str, Any]]:
-    return await PaperSearchAgent().run(topic, max_papers)
+    return list(await search_papers([topic], max_papers))
 
 
 async def default_fetch_text(client: httpx.AsyncClient, url: str) -> Optional[str]:
