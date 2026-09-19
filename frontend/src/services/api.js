@@ -22,40 +22,40 @@ api.interceptors.response.use(
       window.location.href = '/login'
     }
     return Promise.reject(err)
-  }
+  },
 )
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
-  login:    (data) => api.post('/auth/login', data),
-  me:       ()     => api.get('/auth/me'),
+  login: (data) => api.post('/auth/login', data),
+  me: () => api.get('/auth/me'),
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 export const projectsAPI = {
-  list:   ()     => api.get('/projects'),
+  list: () => api.get('/projects'),
   create: (data) => api.post('/projects', data),
-  get:    (id)   => api.get(`/projects/${id}`),
-  delete: (id)   => api.delete(`/projects/${id}`),
+  get: (id) => api.get(`/projects/${id}`),
+  delete: (id) => api.delete(`/projects/${id}`),
 }
 
 // ── Agents ────────────────────────────────────────────────────────────────────
 export const agentsAPI = {
-  run:    (data) => api.post('/agents/run', data),
-  status: (id)   => api.get(`/agents/status/${id}`),
+  run: (data) => api.post('/agents/run', data),
+  status: (id) => api.get(`/agents/status/${id}`),
 }
 
 // ── Papers ────────────────────────────────────────────────────────────────────
 export const papersAPI = {
-  list:      (pid) => api.get(`/papers/${pid}`),
+  list: (pid) => api.get(`/papers/${pid}`),
   summaries: (pid) => api.get(`/papers/${pid}/summaries`),
-  findings:  (pid) => api.get(`/papers/${pid}/findings`),
+  findings: (pid) => api.get(`/papers/${pid}/findings`),
 }
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
 export const reviewsAPI = {
-  get:      (pid) => api.get(`/reviews/${pid}`),
+  get: (pid) => api.get(`/reviews/${pid}`),
   // FIX: use responseType: 'text' so axios doesn't parse the markdown as JSON
   markdown: (pid) => api.get(`/reviews/${pid}/markdown`, { responseType: 'text' }),
 }
@@ -63,8 +63,8 @@ export const reviewsAPI = {
 // ── Chat ──────────────────────────────────────────────────────────────────────
 export const chatAPI = {
   history: (pid) => api.get(`/chat/history/${pid}`),
-  clear:   (pid) => api.delete(`/chat/history/${pid}`),
-  query:   (data) => api.post('/chat/query', data),
+  clear: (pid) => api.delete(`/chat/history/${pid}`),
+  query: (data) => api.post('/chat/query', data),
 }
 
 export default api

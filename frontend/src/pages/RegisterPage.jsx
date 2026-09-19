@@ -6,7 +6,7 @@ import { authAPI } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 
 export default function RegisterPage() {
-  const [form, setForm]       = useState({ email: '', username: '', password: '' })
+  const [form, setForm] = useState({ email: '', username: '', password: '' })
   const [loading, setLoading] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
@@ -32,7 +32,6 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-600 mb-4">
             <FlaskConical size={22} className="text-white" />
@@ -50,7 +49,7 @@ export default function RegisterPage() {
                 className="input"
                 placeholder="johndoe"
                 value={form.username}
-                onChange={e => setForm({ ...form, username: e.target.value })}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
                 required
                 autoFocus
               />
@@ -62,7 +61,7 @@ export default function RegisterPage() {
                 className="input"
                 placeholder="you@example.com"
                 value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
               />
             </div>
@@ -73,20 +72,19 @@ export default function RegisterPage() {
                 className="input"
                 placeholder="Min. 8 characters"
                 value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
                 required
                 minLength={8}
               />
             </div>
-            <button
-              type="submit"
-              className="btn-primary w-full py-2.5 mt-1"
-              disabled={loading}
-            >
-              {loading
-                ? <><Loader2 size={15} className="animate-spin" /> Creating account…</>
-                : 'Create account'
-              }
+            <button type="submit" className="btn-primary w-full py-2.5 mt-1" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Creating account…
+                </>
+              ) : (
+                'Create account'
+              )}
             </button>
           </form>
         </div>

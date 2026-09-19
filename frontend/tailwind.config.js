@@ -24,15 +24,22 @@ export default {
         espresso: {
           800: '#3D3531',
           900: '#2B2623',
-        }
+        },
       },
       fontFamily: {
-        sans: ['"Outfit"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        sans: [
+          '"Outfit"',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          'sans-serif',
+        ],
       },
       boxShadow: {
-        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
-        'glow': '0 0 15px rgba(249, 115, 22, 0.4)',
-      }
+        soft: '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+        glow: '0 0 15px rgba(249, 115, 22, 0.4)',
+      },
     },
   },
   plugins: [],

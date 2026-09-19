@@ -6,7 +6,7 @@ import { authAPI } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 
 export default function LoginPage() {
-  const [form, setForm]     = useState({ email: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
@@ -28,11 +28,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-
         {/* Brand mark */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl
-                          bg-brand-600 mb-4">
+          <div
+            className="inline-flex items-center justify-center w-12 h-12 rounded-xl
+                          bg-brand-600 mb-4"
+          >
             <FlaskConical size={22} className="text-white" />
           </div>
           <h1 className="text-xl font-semibold text-gray-900">Sign in to ResearchGPT</h1>
@@ -49,7 +50,7 @@ export default function LoginPage() {
                 className="input"
                 placeholder="you@example.com"
                 value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
                 autoFocus
               />
@@ -61,19 +62,18 @@ export default function LoginPage() {
                 className="input"
                 placeholder="••••••••"
                 value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
                 required
               />
             </div>
-            <button
-              type="submit"
-              className="btn-primary w-full py-2.5 mt-1"
-              disabled={loading}
-            >
-              {loading
-                ? <><Loader2 size={15} className="animate-spin" /> Signing in…</>
-                : 'Sign in'
-              }
+            <button type="submit" className="btn-primary w-full py-2.5 mt-1" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Signing in…
+                </>
+              ) : (
+                'Sign in'
+              )}
             </button>
           </form>
         </div>

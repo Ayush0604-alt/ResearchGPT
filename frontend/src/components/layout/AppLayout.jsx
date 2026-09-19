@@ -25,14 +25,18 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5">
-          <p className="px-2 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Menu</p>
+          <p className="px-2 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+            Menu
+          </p>
           <NavLink
             to="/dashboard"
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors
-               ${isActive
-                 ? 'bg-brand-50 text-brand-700 font-medium'
-                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
+               ${
+                 isActive
+                   ? 'bg-brand-50 text-brand-700 font-medium'
+                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+               }`
             }
           >
             <LayoutDashboard size={15} />
@@ -42,9 +46,11 @@ export default function AppLayout() {
             to="/project/new"
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors
-               ${isActive
-                 ? 'bg-brand-50 text-brand-700 font-medium'
-                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
+               ${
+                 isActive
+                   ? 'bg-brand-50 text-brand-700 font-medium'
+                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+               }`
             }
           >
             <Plus size={15} />
@@ -55,12 +61,16 @@ export default function AppLayout() {
         {/* User footer */}
         <div className="px-3 py-3 border-t border-gray-100">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg mb-1">
-            <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center
-                            justify-center text-xs font-semibold flex-shrink-0">
+            <div
+              className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center
+                            justify-center text-xs font-semibold flex-shrink-0"
+            >
               {(user?.username?.[0] || 'U').toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-900 truncate">{user?.username || 'User'}</p>
+              <p className="text-xs font-medium text-gray-900 truncate">
+                {user?.username || 'User'}
+              </p>
               <p className="text-xs text-gray-400 truncate">{user?.email || ''}</p>
             </div>
           </div>

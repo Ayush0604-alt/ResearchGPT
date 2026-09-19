@@ -5,15 +5,15 @@ import toast from 'react-hot-toast'
 import { projectsAPI } from '../services/api'
 
 const STATUS = {
-  pending:   { label: 'Pending',   cls: 'badge-amber', dot: 'bg-amber-400' },
-  running:   { label: 'Running',   cls: 'badge-blue',  dot: 'bg-brand-400 animate-pulse' },
-  completed: { label: 'Done',      cls: 'badge-green', dot: 'bg-green-500' },
-  failed:    { label: 'Failed',    cls: 'badge-red',   dot: 'bg-red-400' },
+  pending: { label: 'Pending', cls: 'badge-amber', dot: 'bg-amber-400' },
+  running: { label: 'Running', cls: 'badge-blue', dot: 'bg-brand-400 animate-pulse' },
+  completed: { label: 'Done', cls: 'badge-green', dot: 'bg-green-500' },
+  failed: { label: 'Failed', cls: 'badge-red', dot: 'bg-red-400' },
 }
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState([])
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading] = useState(true)
 
   const fetchProjects = async () => {
     try {
@@ -26,7 +26,9 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { fetchProjects() }, [])
+  useEffect(() => {
+    fetchProjects()
+  }, [])
 
   const handleDelete = async (id, e) => {
     e.preventDefault()
@@ -34,7 +36,7 @@ export default function DashboardPage() {
     if (!confirm('Delete this project? This action cannot be undone.')) return
     try {
       await projectsAPI.delete(id)
-      setProjects(p => p.filter(x => x.id !== id))
+      setProjects((p) => p.filter((x) => x.id !== id))
       toast.success('Project deleted')
     } catch {
       toast.error('Could not delete project')
@@ -101,14 +103,16 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {projects.map(project => {
+              {projects.map((project) => {
                 const cfg = STATUS[project.status] || STATUS.pending
                 return (
                   <tr key={project.id} className="group hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3.5">
                       <Link to={`/project/${project.id}`} className="block">
-                        <p className="text-sm font-medium text-gray-900 group-hover:text-brand-600
-                                      transition-colors truncate max-w-sm">
+                        <p
+                          className="text-sm font-medium text-gray-900 group-hover:text-brand-600
+                                      transition-colors truncate max-w-sm"
+                        >
                           {project.title}
                         </p>
                         <p className="text-xs text-gray-400 mt-0.5 truncate max-w-sm">
@@ -124,12 +128,14 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-5 py-3.5 text-xs text-gray-400">
                       {new Date(project.created_at).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric'
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
                       })}
                     </td>
                     <td className="pr-4 py-3.5 text-right">
                       <button
-                        onClick={e => handleDelete(project.id, e)}
+                        onClick={(e) => handleDelete(project.id, e)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity
                                    p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50"
                       >

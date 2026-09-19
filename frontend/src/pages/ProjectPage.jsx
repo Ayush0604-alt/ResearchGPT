@@ -1,39 +1,57 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  Play, Loader2, CheckCircle, XCircle,
-  MessageSquare, BookOpen, ExternalLink,
-  ChevronDown, ChevronUp, Users, ArrowLeft
+  Play,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  MessageSquare,
+  BookOpen,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Users,
+  ArrowLeft,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { projectsAPI, agentsAPI, papersAPI } from '../services/api'
 
 const STEPS = [
-  'Paper Search', 'Paper Collection', 'Doc Processing', 'Summarization',
-  'Key Findings', 'Comparison', 'Trend Analysis', 'Research Gaps',
-  'Lit. Review'
+  'Paper Search',
+  'Paper Collection',
+  'Doc Processing',
+  'Summarization',
+  'Key Findings',
+  'Comparison',
+  'Trend Analysis',
+  'Research Gaps',
+  'Lit. Review',
 ]
 
 const SOURCE_LABELS = {
-  arxiv:            'arXiv',
+  arxiv: 'arXiv',
   semantic_scholar: 'Semantic Scholar',
-  pubmed:           'PubMed',
+  pubmed: 'PubMed',
 }
 
 function parseAuthors(raw) {
   if (!raw) return []
   if (Array.isArray(raw)) return raw
-  try { return JSON.parse(raw) } catch { return [] }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
 }
 
 export default function ProjectPage() {
   const { id } = useParams()
-  const [project,    setProject]    = useState(null)
-  const [papers,     setPapers]     = useState([])
+  const [project, setProject] = useState(null)
+  const [papers, setPapers] = useState([])
   const [taskStatus, setTaskStatus] = useState(null)
-  const [loading,    setLoading]    = useState(true)
-  const [starting,   setStarting]   = useState(false)
-  const [expanded,   setExpanded]   = useState({})
+  const [loading, setLoading] = useState(true)
+  const [starting, setStarting] = useState(false)
+  const [expanded, setExpanded] = useState({})
   const pollRef = useRef(null)
 
   const load = async () => {
@@ -45,7 +63,7 @@ export default function ProjectPage() {
       // (FastAPI List[PaperOut] response), so we handle both array and object shapes.
       try {
         const papRes = await papersAPI.list(id)
-        const papersData = Array.isArray(papRes.data) ? papRes.data : (papRes.data || [])
+        const papersData = Array.isArray(papRes.data) ? papRes.data : papRes.data || []
         setPapers(papersData)
       } catch {
         setPapers([])
@@ -65,7 +83,7 @@ export default function ProjectPage() {
     setStarting(true)
     try {
       const { data } = await agentsAPI.run({ project_id: parseInt(id), max_papers: 10 })
-      setProject(p => ({ ...p, status: 'running', task_id: data.task_id }))
+      setProject((p) => ({ ...p, status: 'running', task_id: data.task_id }))
       setTaskStatus(data)
       poll(data.task_id)
       toast.success('Pipeline started!')
@@ -84,19 +102,23 @@ export default function ProjectPage() {
         if (data.status === 'completed') {
           clearInterval(pollRef.current)
           setStarting(false)
-          setProject(p => ({ ...p, status: 'completed' }))
+          setProject((p) => ({ ...p, status: 'completed' }))
           try {
             const { data: papData } = await papersAPI.list(id)
-            setPapers(Array.isArray(papData) ? papData : (papData || []))
-          } catch { /* non-critical */ }
+            setPapers(Array.isArray(papData) ? papData : papData || [])
+          } catch {
+            /* non-critical */
+          }
           toast.success('Pipeline completed!')
         } else if (data.status === 'failed') {
           clearInterval(pollRef.current)
           setStarting(false)
-          setProject(p => ({ ...p, status: 'failed' }))
+          setProject((p) => ({ ...p, status: 'failed' }))
           toast.error('Pipeline failed: ' + (data.error || 'Unknown error'))
         }
-      } catch { /* swallow polling errors */ }
+      } catch {
+        /* swallow polling errors */
+      }
     }, 2500)
   }
 
@@ -105,24 +127,25 @@ export default function ProjectPage() {
     return () => clearInterval(pollRef.current)
   }, [id])
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-48">
-      <Loader2 className="animate-spin text-brand-500" size={24} />
-    </div>
-  )
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-48">
+        <Loader2 className="animate-spin text-brand-500" size={24} />
+      </div>
+    )
 
-  if (!project) return (
-    <div className="text-sm text-gray-500">Project not found.</div>
-  )
+  if (!project) return <div className="text-sm text-gray-500">Project not found.</div>
 
-  const isRunning   = project.status === 'running'
+  const isRunning = project.status === 'running'
   const isCompleted = project.status === 'completed'
-  const isFailed    = project.status === 'failed'
-  const isPending   = project.status === 'pending'
+  const isFailed = project.status === 'failed'
+  const isPending = project.status === 'pending'
 
   const stepIdx = taskStatus
-    ? STEPS.findIndex(s => s === taskStatus.current_agent)
-    : isCompleted ? STEPS.length : -1
+    ? STEPS.findIndex((s) => s === taskStatus.current_agent)
+    : isCompleted
+      ? STEPS.length
+      : -1
 
   return (
     <div className="space-y-6">
@@ -130,8 +153,10 @@ export default function ProjectPage() {
       <div className="page-header">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <Link to="/dashboard"
-              className="mt-0.5 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+            <Link
+              to="/dashboard"
+              className="mt-0.5 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
               <ArrowLeft size={15} />
             </Link>
             <div>
@@ -153,15 +178,16 @@ export default function ProjectPage() {
               </>
             )}
             {(isPending || isFailed) && (
-              <button
-                onClick={startPipeline}
-                disabled={starting}
-                className="btn-primary btn-sm"
-              >
-                {starting
-                  ? <><Loader2 size={13} className="animate-spin" /> Starting…</>
-                  : <><Play size={13} /> Run pipeline</>
-                }
+              <button onClick={startPipeline} disabled={starting} className="btn-primary btn-sm">
+                {starting ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" /> Starting…
+                  </>
+                ) : (
+                  <>
+                    <Play size={13} /> Run pipeline
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -170,10 +196,26 @@ export default function ProjectPage() {
 
       {/* Status pill */}
       <div className="flex items-center gap-2">
-        {isPending   && <span className="badge-amber"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Ready to run</span>}
-        {isRunning   && <span className="badge-blue"><span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Running</span>}
-        {isCompleted && <span className="badge-green"><CheckCircle size={11} /> Completed · {papers.length} papers</span>}
-        {isFailed    && <span className="badge-red"><XCircle size={11} /> Failed</span>}
+        {isPending && (
+          <span className="badge-amber">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Ready to run
+          </span>
+        )}
+        {isRunning && (
+          <span className="badge-blue">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Running
+          </span>
+        )}
+        {isCompleted && (
+          <span className="badge-green">
+            <CheckCircle size={11} /> Completed · {papers.length} papers
+          </span>
+        )}
+        {isFailed && (
+          <span className="badge-red">
+            <XCircle size={11} /> Failed
+          </span>
+        )}
       </div>
 
       {/* Pipeline progress */}
@@ -197,15 +239,21 @@ export default function ProjectPage() {
           {/* Step dots */}
           <div className="flex items-start justify-between gap-1">
             {STEPS.map((step, i) => {
-              const done   = isCompleted || stepIdx > i
+              const done = isCompleted || stepIdx > i
               const active = stepIdx === i && isRunning
               return (
                 <div key={step} className="flex flex-col items-center gap-1.5 flex-1">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs
                     transition-all duration-300
-                    ${done   ? 'bg-green-500 text-white'
-                    : active ? 'bg-brand-500 text-white ring-2 ring-brand-200'
-                    :          'bg-gray-100 text-gray-400'}`}>
+                    ${
+                      done
+                        ? 'bg-green-500 text-white'
+                        : active
+                          ? 'bg-brand-500 text-white ring-2 ring-brand-200'
+                          : 'bg-gray-100 text-gray-400'
+                    }`}
+                  >
                     {done ? <CheckCircle size={12} /> : i + 1}
                   </div>
                   <span className="text-center text-xs text-gray-400 leading-tight hidden sm:block">
@@ -223,15 +271,15 @@ export default function ProjectPage() {
         <div>
           <h2 className="section-title">Papers analyzed ({papers.length})</h2>
           <div className="card divide-y divide-gray-50 overflow-hidden">
-            {papers.map(paper => {
+            {papers.map((paper) => {
               const authors = parseAuthors(paper.authors)
-              const isOpen  = expanded[paper.id]
+              const isOpen = expanded[paper.id]
               return (
                 <div key={paper.id}>
                   <button
                     className="w-full flex items-start justify-between px-5 py-3.5
                                hover:bg-gray-50 transition-colors text-left gap-4"
-                    onClick={() => setExpanded(e => ({ ...e, [paper.id]: !e[paper.id] }))}
+                    onClick={() => setExpanded((e) => ({ ...e, [paper.id]: !e[paper.id] }))}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -240,9 +288,7 @@ export default function ProjectPage() {
                             {SOURCE_LABELS[paper.source] || paper.source}
                           </span>
                         )}
-                        {paper.year && (
-                          <span className="text-xs text-gray-400">{paper.year}</span>
-                        )}
+                        {paper.year && <span className="text-xs text-gray-400">{paper.year}</span>}
                       </div>
                       <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">
                         {paper.title}
@@ -254,15 +300,17 @@ export default function ProjectPage() {
                           href={paper.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          onClick={e => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
                           className="p-1 text-gray-400 hover:text-brand-500 transition-colors"
                         >
                           <ExternalLink size={13} />
                         </a>
                       )}
-                      {isOpen
-                        ? <ChevronUp size={15} className="text-gray-400" />
-                        : <ChevronDown size={15} className="text-gray-400" />}
+                      {isOpen ? (
+                        <ChevronUp size={15} className="text-gray-400" />
+                      ) : (
+                        <ChevronDown size={15} className="text-gray-400" />
+                      )}
                     </div>
                   </button>
 
