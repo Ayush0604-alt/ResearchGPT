@@ -1,10 +1,5 @@
 """
 Pydantic v2 schemas for request/response validation.
-
-Fixes:
-- CitationSource.relevance_score is Optional[float] with default 0.0 —
-  ChromaDB distance-to-score conversion may produce None in edge cases.
-- RAGResponse.citations uses List[Dict] as fallback if structured parsing fails.
 """
 
 from datetime import datetime
@@ -98,17 +93,6 @@ class ProjectList(BaseModel):
 # ── Papers ────────────────────────────────────────────────────────────────────
 
 
-class PaperMetadata(BaseModel):
-    title: str
-    authors: Optional[List[str]] = []
-    abstract: Optional[str] = None
-    year: Optional[int] = None
-    url: Optional[str] = None
-    pdf_url: Optional[str] = None
-    source: Optional[str] = None
-    external_id: Optional[str] = None
-
-
 class PaperOut(BaseModel):
     id: int
     project_id: int
@@ -164,28 +148,6 @@ class AgentStatusResponse(BaseModel):
     error: Optional[str] = None
 
 
-# ── RAG ───────────────────────────────────────────────────────────────────────
-
-
-class RAGQuery(BaseModel):
-    project_id: int
-    question: str
-
-
-class CitationSource(BaseModel):
-    paper_title: str
-    paper_id: Optional[int] = None
-    chunk_text: str
-    # FIX: Optional with default 0.0 — score may be missing in edge cases
-    relevance_score: Optional[float] = 0.0
-
-
-class RAGResponse(BaseModel):
-    answer: str
-    citations: List[CitationSource]
-    question: str
-
-
 # ── Literature Review ─────────────────────────────────────────────────────────
 
 
@@ -204,25 +166,7 @@ class LiteratureReviewOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Presentations ─────────────────────────────────────────────────────────────
-
-
-class PresentationOut(BaseModel):
-    id: int
-    project_id: int
-    file_path: Optional[str] = None
-    slide_data: Optional[Dict[str, Any]] = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
 # ── Chat ──────────────────────────────────────────────────────────────────────
-
-
-class ChatMessageIn(BaseModel):
-    project_id: int
-    message: str
 
 
 class ChatMessageOut(BaseModel):

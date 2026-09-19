@@ -14,7 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 class PaperSearchAgent:
     """
     Searches multiple academic sources and returns paper metadata.
-    Returns a unified list of PaperMetadata dicts.
+    Returns a unified list of paper dicts (title, authors, abstract, year, urls, source).
     """
 
     def __init__(self):

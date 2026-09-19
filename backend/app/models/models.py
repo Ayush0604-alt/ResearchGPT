@@ -87,9 +87,6 @@ class ResearchProject(Base):
     literature_review: Mapped[Optional["LiteratureReview"]] = relationship(
         "LiteratureReview", back_populates="project", uselist=False, cascade="all, delete-orphan"
     )
-    presentation: Mapped[Optional["Presentation"]] = relationship(
-        "Presentation", back_populates="project", uselist=False, cascade="all, delete-orphan"
-    )
     chat_messages: Mapped[List["ChatMessage"]] = relationship(
         "ChatMessage", back_populates="project", cascade="all, delete-orphan"
     )
@@ -188,25 +185,6 @@ class LiteratureReview(Base):
 
     project: Mapped["ResearchProject"] = relationship(
         "ResearchProject", back_populates="literature_review"
-    )
-
-
-# ── Presentations ─────────────────────────────────────────────────────────────
-
-
-class Presentation(Base):
-    __tablename__ = "presentations"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("research_projects.id", ondelete="CASCADE"), unique=True, nullable=False
-    )
-    file_path: Mapped[Optional[str]] = mapped_column(String(500))
-    slide_data: Mapped[Optional[dict]] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
-
-    project: Mapped["ResearchProject"] = relationship(
-        "ResearchProject", back_populates="presentation"
     )
 
 

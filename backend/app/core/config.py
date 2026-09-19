@@ -49,10 +49,6 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
-    # ── ChromaDB ───────────────────────────────────────────────────────────────
-    CHROMA_PERSIST_DIR: str = "./storage/chroma"
-    CHROMA_COLLECTION_NAME: str = "research_papers"
-
     # ── Storage ────────────────────────────────────────────────────────────────
     PDF_STORAGE_DIR: str = "./storage/pdfs"
     MAX_PDF_SIZE_MB: int = 50
@@ -63,22 +59,6 @@ class Settings(BaseSettings):
     # ── Rate Limits ────────────────────────────────────────────────────────────
     MAX_PAPERS_PER_SEARCH: int = 20
     MAX_PAPERS_TO_DOWNLOAD: int = 10
-
-    # ── Redis ──────────────────────────────────────────────────────────────────
-    REDIS_URL: str = "redis://localhost:6379/0"
-
-    # ── Future: AWS S3 ─────────────────────────────────────────────────────────
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "us-east-1"
-    AWS_S3_BUCKET: str = ""
-    USE_S3: bool = False
-
-    # ── Future: Pinecone ───────────────────────────────────────────────────────
-    PINECONE_API_KEY: str = ""
-    PINECONE_ENVIRONMENT: str = ""
-    PINECONE_INDEX_NAME: str = "researchgpt"
-    USE_PINECONE: bool = False
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

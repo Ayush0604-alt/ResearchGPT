@@ -30,8 +30,6 @@ async def lifespan(app: FastAPI):
     Shutdown: dispose async engine connection pool.
     """
     os.makedirs(settings.PDF_STORAGE_DIR, exist_ok=True)
-    os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
-    os.makedirs("./storage/presentations", exist_ok=True)
     os.makedirs("./logs", exist_ok=True)
     await fail_interrupted_runs()
     yield

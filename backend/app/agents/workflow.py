@@ -28,10 +28,8 @@ class ResearchState(TypedDict):
     trends: str
     gaps: str
     literature_review: Dict[str, str]
-    presentation: Dict[str, Any]
     current_agent: str
     progress: int
-    errors: List[str]
 
 
 # ── Helper to push progress to the task store ──────────────────────────────────
@@ -145,10 +143,8 @@ async def run_research_workflow(
         "trends": "",
         "gaps": "",
         "literature_review": {},
-        "presentation": {},
         "current_agent": "Initializing",
         "progress": 0,
-        "errors": [],
     }
     logger.info(f"[Workflow] Starting pipeline topic='{topic}' project={project_id}")
     final = await workflow.ainvoke(initial)

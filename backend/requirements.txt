@@ -28,9 +28,8 @@ email-validator==2.1.1
 
 # ==========================
 # Google Gemini
-# Use 0.8.x — stable async API, works with chromadb 0.5 embedding_functions
 # ==========================
-google-genai>=0.1.2
+google-genai==1.2.0
 
 # ==========================
 # LangGraph / LangChain
@@ -45,14 +44,7 @@ langchain-core==0.2.38
 # HTTP & Async
 # ==========================
 httpx==0.27.0
-aiohttp==3.9.5
 aiofiles==23.2.1
-
-# ==========================
-# Data Processing
-# ==========================
-numpy>=1.26.4
-pandas>=2.2.2
 
 # ==========================
 # Utilities
@@ -61,8 +53,4 @@ python-dotenv==1.0.1
 loguru==0.7.2
 tenacity==8.3.0
 
-# ==========================
-# Background Tasks (optional — not used in default setup)
-# ==========================
-# celery==5.3.6
-# redis==5.0.4
+

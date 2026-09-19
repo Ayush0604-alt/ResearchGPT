@@ -17,7 +17,6 @@ from app.models.models import (
     Paper,
     PaperFindings,
     PaperSummary,
-    Presentation,
     ProjectStatus,
     ResearchProject,
 )
@@ -107,7 +106,7 @@ def _paper_from_dict(project_id: int, data: Dict[str, Any]) -> Paper:
 async def replace_results(db: AsyncSession, project_id: int, final_state: Dict[str, Any]) -> None:
     """Swap the project's papers and review for a run's results, in one transaction."""
     # Summaries and findings go with their papers via ON DELETE CASCADE.
-    for model in (Paper, LiteratureReview, Presentation):
+    for model in (Paper, LiteratureReview):
         await db.execute(delete(model).where(model.project_id == project_id))
 
     for data in final_state.get("papers", []):
