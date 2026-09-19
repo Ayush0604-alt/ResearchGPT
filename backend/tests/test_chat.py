@@ -1,55 +1,82 @@
-from app.api.routes import chat as chat_route
-from app.utils.gemini_client import RateLimitError
+"""Chat: the browser generates answers; the server stores finished exchanges."""
+
+from sqlalchemy import select
+
+from app.db.session import AsyncSessionLocal
+from app.models.models import Paper
 
 
-async def _ask(client, user, pid, question="What models are used?"):
+async def _paper(pid, title="Paper A"):
+    async with AsyncSessionLocal() as db:
+        paper = Paper(project_id=pid, title=title)
+        db.add(paper)
+        await db.commit()
+        return paper.id
+
+
+async def _save(client, user, pid, **overrides):
+    body = {"question": "What models?", "answer": "Transformers [P1].", "citations": []}
     return await client.post(
-        "/chat/query", json={"project_id": pid, "question": question}, headers=user["headers"]
+        f"/chat/{pid}/messages", json=body | overrides, headers=user["headers"]
     )
 
 
-async def test_chat_returns_answer_and_citations_key(client, make_user, make_project, monkeypatch):
-    async def fake_ask(prompt, max_tokens):
-        return "They use transformers."
-
-    monkeypatch.setattr(chat_route, "ask_gemini", fake_ask)
+async def test_saves_question_and_answer_in_order(client, make_user, make_project):
     user = await make_user()
     pid = await make_project(user)
 
-    body = (await _ask(client, user, pid)).json()
+    resp = await _save(client, user, pid)
+    await _save(client, user, pid, question="Second?", answer="Second answer.")
 
-    assert body == {"answer": "They use transformers.", "citations": []}
+    assert resp.status_code == 201
     history = (await client.get(f"/chat/history/{pid}", headers=user["headers"])).json()
-    assert [m["role"] for m in history["messages"]] == ["user", "assistant"]
+    contents = [(m["role"], m["content"]) for m in history["messages"]]
+    assert contents == [
+        ("user", "What models?"),
+        ("assistant", "Transformers [P1]."),
+        ("user", "Second?"),
+        ("assistant", "Second answer."),
+    ]
 
 
-async def test_chat_hides_internal_errors(client, make_user, make_project, monkeypatch):
-    async def boom(prompt, max_tokens):
-        raise RuntimeError("connection to 10.0.0.5 failed, key=AIza-secret")
-
-    monkeypatch.setattr(chat_route, "ask_gemini", boom)
+async def test_keeps_only_citations_of_this_projects_papers(client, make_user, make_project):
     user = await make_user()
     pid = await make_project(user)
+    other = await make_project(user)
+    mine = await _paper(pid, "Mine")
+    foreign = await _paper(other, "Foreign")
 
-    resp = await _ask(client, user, pid)
+    await _save(
+        client,
+        user,
+        pid,
+        citations=[
+            {"paper_id": mine},
+            {"paper_id": foreign},
+            {"paper_id": mine},
+            {"paper_id": 999},
+        ],
+    )
 
-    assert resp.status_code == 502
-    assert "10.0.0.5" not in resp.text and "AIza" not in resp.text
-    assert "try again" in resp.json()["detail"]
-    # A failed exchange is not stored.
-    history = (await client.get(f"/chat/history/{pid}", headers=user["headers"])).json()
-    assert history["total"] == 0
+    answer = (await client.get(f"/chat/history/{pid}", headers=user["headers"])).json()["messages"][
+        1
+    ]
+    assert answer["citations"] == {"papers": [{"paper_id": mine, "title": "Mine"}]}
 
 
-async def test_chat_explains_rate_limits(client, make_user, make_project, monkeypatch):
-    async def limited(prompt, max_tokens):
-        raise RateLimitError("429")
-
-    monkeypatch.setattr(chat_route, "ask_gemini", limited)
+async def test_rejects_empty_or_oversized_exchanges(client, make_user, make_project):
     user = await make_user()
     pid = await make_project(user)
+    for overrides in ({"question": ""}, {"answer": ""}, {"answer": "x" * 20_001}):
+        assert (await _save(client, user, pid, **overrides)).status_code == 422
 
-    resp = await _ask(client, user, pid)
 
-    assert resp.status_code == 429
-    assert "rate limit" in resp.json()["detail"]
+async def test_server_no_longer_answers_questions(client, make_user, make_project):
+    user = await make_user()
+    pid = await make_project(user)
+    resp = await client.post(
+        "/chat/query", json={"project_id": pid, "question": "q"}, headers=user["headers"]
+    )
+    assert resp.status_code in (404, 405)
+    async with AsyncSessionLocal() as db:
+        assert (await db.scalars(select(Paper))).all() == []

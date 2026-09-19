@@ -71,22 +71,6 @@ test('review page explains when there is no review yet', async ({ page }) => {
   await expect(page.getByText('No literature review yet')).toBeVisible()
 })
 
-test('a failed chat answer is not stored and the question is kept', async ({ page }) => {
-  await register(page)
-  await createProject(page, 'federated learning')
-  await page.goto(page.url() + '/chat')
-
-  const input = page.getByLabel('Your question')
-  await input.fill('What datasets are used?')
-  await page.getByRole('button', { name: 'Send question' }).click()
-
-  // No Gemini key on the e2e server: the API answers 502 with a safe message.
-  await expect(page.getByText("Couldn't get an answer right now")).toBeVisible()
-  await expect(input).toHaveValue('What datasets are used?')
-  await page.reload()
-  await expect(page.getByText('Ask anything about your papers')).toBeVisible()
-})
-
 test('deleting a project removes it from the dashboard', async ({ page }) => {
   await register(page)
   await createProject(page, 'vision transformers')

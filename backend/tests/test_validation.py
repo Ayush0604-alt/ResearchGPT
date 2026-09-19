@@ -47,16 +47,6 @@ async def test_max_papers_bounds(client, make_user, make_project, max_papers):
     assert resp.status_code == 422
 
 
-@pytest.mark.parametrize("question", ["", "x" * 4001])
-async def test_chat_question_bounds(client, make_user, make_project, question):
-    user = await make_user()
-    pid = await make_project(user)
-    resp = await client.post(
-        "/chat/query", json={"project_id": pid, "question": question}, headers=user["headers"]
-    )
-    assert resp.status_code == 422
-
-
 async def test_deactivated_user_token_is_rejected(client, make_user):
     user = await make_user()
     async with AsyncSessionLocal() as db:

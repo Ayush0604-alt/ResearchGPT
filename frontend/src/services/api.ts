@@ -2,7 +2,7 @@ import axios, { type AxiosError } from 'axios'
 import { useAuthStore } from '../store/authStore'
 import type {
   AnalysisIn,
-  ChatAnswer,
+  ChatExchangeIn,
   ChatHistory,
   LiteratureReview,
   Paper,
@@ -85,8 +85,9 @@ export const reviewsAPI = {
 export const chatAPI = {
   history: (pid: number | string) => api.get<ChatHistory>(`/chat/history/${pid}`),
   clear: (pid: number | string) => api.delete(`/chat/history/${pid}`),
-  query: (data: { project_id: number; question: string }) =>
-    api.post<ChatAnswer>('/chat/query', data),
+  /** Store a question and the answer generated in the browser. */
+  saveExchange: (pid: number | string, data: ChatExchangeIn) =>
+    api.post<ChatHistory>(`/chat/${pid}/messages`, data),
 }
 
 interface ValidationIssue {

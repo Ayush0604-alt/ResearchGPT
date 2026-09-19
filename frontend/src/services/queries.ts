@@ -108,15 +108,6 @@ export function useDeleteProject() {
   })
 }
 
-export function useAskQuestion(id: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (question: string) =>
-      (await chatAPI.query({ project_id: Number(id), question })).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.chat(id) }),
-  })
-}
-
 export function useClearChat(id: string) {
   const qc = useQueryClient()
   return useMutation({

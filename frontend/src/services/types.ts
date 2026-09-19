@@ -123,13 +123,13 @@ export interface ChatMessage {
   project_id: number
   role: 'user' | 'assistant'
   content: string
-  citations: { sources?: Citation[] } | null
+  citations: { papers?: CitedPaper[] } | null
   created_at: string
 }
 
-export interface Citation {
-  paper_title: string
-  relevance_score?: number
+export interface CitedPaper {
+  paper_id: number
+  title: string
 }
 
 export interface ChatHistory {
@@ -137,7 +137,8 @@ export interface ChatHistory {
   total: number
 }
 
-export interface ChatAnswer {
+export interface ChatExchangeIn {
+  question: string
   answer: string
-  citations: Citation[]
+  citations: { paper_id: number }[]
 }

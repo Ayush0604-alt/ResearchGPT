@@ -212,6 +212,16 @@ class LiteratureReviewOut(BaseModel):
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
 
+class ChatCitationIn(BaseModel):
+    paper_id: int
+
+
+class ChatExchangeIn(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    answer: str = Field(min_length=1, max_length=20_000)
+    citations: List[ChatCitationIn] = Field(default_factory=list, max_length=50)
+
+
 class ChatMessageOut(BaseModel):
     id: int
     project_id: int

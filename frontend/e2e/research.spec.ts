@@ -21,7 +21,7 @@ const EXTRACTION = {
   key_quotes: ['we observe consistent gains'],
 }
 
-type Mode = 'ok' | 'rate-limited'
+type Mode = 'ok' | 'rate-limited' | 'chat-down'
 
 function geminiResponse(body: unknown) {
   return {
@@ -55,6 +55,22 @@ async function stubGemini(page: Page) {
     const body = request.postDataJSON()
     const system: string = body.systemInstruction?.parts?.[0]?.text ?? ''
     const prompt: string = body.contents[0].parts[0].text
+
+    if (request.url().includes(':streamGenerateContent')) {
+      if (mode === 'chat-down') {
+        return route.fulfill({ status: 503, json: { error: { message: 'Model overloaded' } } })
+      }
+      const id = system.match(/<paper id="P(\d+)">/)?.[1]
+      const event = (text: string) =>
+        `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] })}
+
+`
+      const turns = body.contents.length
+      return route.fulfill({
+        contentType: 'text/event-stream',
+        body: event('Most papers use ') + event(`GraphGPS [P${id}]. `) + event(`(turns: ${turns})`),
+      })
+    }
 
     if (system.includes('literature reviews')) {
       const ids = [...prompt.matchAll(/<paper id="P(\d+)">/g)].map((m) => m[1])
@@ -167,4 +183,47 @@ test('without a key, the project asks for one instead of running', async ({ page
   await expect(page.getByRole('button', { name: 'Run analysis' })).toHaveCount(0)
   await page.getByRole('link', { name: 'Add your API key to run' }).click()
   await expect(page).toHaveURL(/\/settings$/)
+})
+
+test('chat answers stream in, cite papers, and are saved with their sources', async ({ page }) => {
+  await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'graph chat')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('link', { name: 'Chat' }).click()
+  await page.getByLabel('Your question').fill('Which models are used?')
+  await page.getByRole('button', { name: 'Send question' }).click()
+  await expect(page.getByText(/Most papers use GraphGPS \[P\d+\]/)).toBeVisible()
+  const sources = page.getByRole('list', { name: 'Sources' })
+  await expect(sources.getByRole('link')).toHaveCount(1)
+
+  // A follow-up sends the earlier turns too (2 history messages + the question).
+  await page.getByLabel('Your question').fill('And the second one?')
+  await page.getByRole('button', { name: 'Send question' }).click()
+  await expect(page.getByText('(turns: 3)')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText('Which models are used?')).toBeVisible()
+  await expect(page.getByText('(turns: 3)')).toBeVisible()
+})
+
+test('a failed chat answer keeps the question and stores nothing', async ({ page }) => {
+  const gemini = await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'graph chat failure')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('link', { name: 'Chat' }).click()
+
+  gemini.setMode('chat-down')
+  const input = page.getByLabel('Your question')
+  await input.fill('What datasets are used?')
+  await page.getByRole('button', { name: 'Send question' }).click()
+  await expect(page.getByText('Model overloaded')).toBeVisible()
+  await expect(input).toHaveValue('What datasets are used?')
+
+  await page.reload()
+  await expect(page.getByText('Ask anything about your papers')).toBeVisible()
 })

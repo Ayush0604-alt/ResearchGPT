@@ -14,7 +14,7 @@ ROUTES = [
     ("GET", "/reviews/{pid}/markdown"),
     ("GET", "/chat/history/{pid}"),
     ("DELETE", "/chat/history/{pid}"),
-    ("POST", "/chat/query"),
+    ("POST", "/chat/{pid}/messages"),
     ("POST", "/projects/{pid}/collect"),
     ("GET", "/papers/{pid}/texts"),
     ("PUT", "/projects/{pid}/papers/1/extraction"),
@@ -53,6 +53,7 @@ async def test_other_users_project_is_not_found(client, make_user, make_project,
         "summary": "s",
         "introduction": "i",
         "body": "b",
+        "answer": "a",
     }
     resp = await client.request(
         method,
@@ -75,6 +76,7 @@ async def test_missing_project_is_not_found(client, make_user, method, path):
         "summary": "s",
         "introduction": "i",
         "body": "b",
+        "answer": "a",
     }
     resp = await client.request(
         method,
