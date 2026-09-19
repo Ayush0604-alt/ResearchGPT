@@ -15,7 +15,8 @@ async function register(page: Page, user = uniqueUser()) {
   await page.getByLabel('Email address').fill(user.email)
   await page.getByLabel('Password').fill(user.password)
   await page.getByRole('button', { name: 'Create account' }).click()
-  await expect(page).toHaveURL(/\/dashboard$/)
+  // New users are sent to add their API key first.
+  await expect(page).toHaveURL(/\/settings\?welcome=1$/)
   return user
 }
 
@@ -28,6 +29,7 @@ async function createProject(page: Page, topic: string) {
 
 test('register, create a project with only a topic, see it on the dashboard', async ({ page }) => {
   await register(page)
+  await page.goto('/dashboard')
   await expect(page.getByText('No projects yet').first()).toBeVisible()
 
   // Regression: optional fields left blank used to be rejected with a 422.

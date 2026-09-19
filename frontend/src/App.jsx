@@ -9,6 +9,7 @@ import NewProjectPage from './pages/NewProjectPage'
 import ProjectPage from './pages/ProjectPage'
 import ChatPage from './pages/ChatPage'
 import ReviewPage from './pages/ReviewPage'
+import SettingsPage from './pages/SettingsPage'
 
 // Layout
 import AppLayout from './components/layout/AppLayout'
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="project/:id" element={<ProjectPage />} />
         <Route path="project/:id/chat" element={<ChatPage />} />
         <Route path="project/:id/review" element={<ReviewPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

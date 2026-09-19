@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { LayoutDashboard, Plus, LogOut, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Plus, LogOut, FlaskConical, KeyRound } from 'lucide-react'
 
 export default function AppLayout() {
   const { user, logout } = useAuthStore()
@@ -55,6 +55,20 @@ export default function AppLayout() {
           >
             <Plus size={15} />
             New Project
+          </NavLink>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors
+               ${
+                 isActive
+                   ? 'bg-brand-50 text-brand-700 font-medium'
+                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+               }`
+            }
+          >
+            <KeyRound size={15} />
+            API key
           </NavLink>
         </nav>
 
