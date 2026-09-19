@@ -1,0 +1,17 @@
+# Keep local environments, secrets and data out of the image
+venv/
+.venv/
+env/
+.env
+.env.*
+!.env.example
+storage/
+logs/
+tests/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+requirements-dev.txt
+Dockerfile
+.dockerignore

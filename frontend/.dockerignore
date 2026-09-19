@@ -1,0 +1,7 @@
+# The image runs `npm ci` itself; host node_modules may hold Windows binaries
+node_modules/
+dist/
+.env
+.env.*
+Dockerfile
+.dockerignore
