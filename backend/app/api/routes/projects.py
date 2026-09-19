@@ -4,6 +4,7 @@ Projects Routes: /api/projects
 
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,9 +24,11 @@ from app.schemas.schemas import (
     ProjectOut,
     SearchOut,
     SearchRequest,
+    SnowballRequest,
 )
 from app.services import analysis_service, collection_service
 from app.services.search import SearchUnavailable
+from app.services.search.records import normalize_title
 
 router = APIRouter()
 
@@ -58,6 +61,7 @@ async def create_project(
         year_from=body.year_from,
         year_to=body.year_to,
         sources=body.sources,
+        snowball=body.snowball,
     )
     db.add(project)
     await db.flush()
@@ -183,21 +187,7 @@ async def search_candidates(
     candidates = [{"id": i, **record} for i, record in enumerate(records)]
     project.candidates = candidates
     await db.flush()
-    return SearchOut(
-        candidates=[
-            Candidate(
-                id=c["id"],
-                title=c.get("title") or "",
-                authors=c.get("authors") or [],
-                abstract=c.get("abstract") or "",
-                year=c.get("year"),
-                source=c.get("source") or "",
-                doi=c.get("doi"),
-                has_pdf=bool(c.get("pdf_url")),
-            )
-            for c in candidates
-        ]
-    )
+    return SearchOut(candidates=[_candidate_out(c) for c in candidates])
 
 
 @router.put("/{project_id}/papers/{paper_id}/extraction", status_code=204)
@@ -225,3 +215,55 @@ async def save_project_analysis(
     await db.flush()
     await db.refresh(project)
     return project
+
+
+def _candidate_out(c: dict) -> Candidate:
+    return Candidate(
+        id=c["id"],
+        title=c.get("title") or "",
+        authors=c.get("authors") or [],
+        abstract=c.get("abstract") or "",
+        year=c.get("year"),
+        source=c.get("source") or "",
+        doi=c.get("doi"),
+        has_pdf=bool(c.get("pdf_url")),
+    )
+
+
+SNOWBALL_LIMIT = 20
+
+
+@router.post("/{project_id}/snowball", response_model=SearchOut)
+async def snowball_candidates(
+    body: SnowballRequest,
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add papers that the seed candidates cite or are cited by. Returns only the
+    new candidates (they still need screening); they're appended to the project's."""
+    await db.refresh(project, ["candidates"])
+    existing = project.candidates or []
+    by_id = {c["id"]: c for c in existing}
+    dois = [by_id[i]["doi"] for i in body.seed_ids if i in by_id and by_id[i].get("doi")]
+    if not dois:
+        return SearchOut(candidates=[])
+    try:
+        records = await collection_service.default_neighbours(dois, SNOWBALL_LIMIT)
+    except httpx.HTTPError:
+        raise HTTPException(503, "Citation data couldn't be reached. Please try again.") from None
+
+    known_dois = {c.get("doi") for c in existing if c.get("doi")}
+    known_titles = {normalize_title(c.get("title") or "") for c in existing}
+    next_id = max((c["id"] for c in existing), default=-1) + 1
+    added = []
+    for record in records:
+        if (
+            record.get("doi") in known_dois
+            or normalize_title(record.get("title") or "") in known_titles
+        ):
+            continue
+        added.append({"id": next_id, **record})
+        next_id += 1
+    project.candidates = [*existing, *added]
+    await db.flush()
+    return SearchOut(candidates=[_candidate_out(c) for c in added])

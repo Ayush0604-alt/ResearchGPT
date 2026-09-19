@@ -75,6 +75,7 @@ class ProjectCreate(BaseModel):
     year_from: Optional[Year] = None
     year_to: Optional[Year] = None
     sources: Optional[List[SourceName]] = Field(default=None, min_length=1)
+    snowball: bool = False
 
     @model_validator(mode="after")
     def _years_in_order(self):
@@ -101,6 +102,7 @@ class ProjectOut(BaseModel):
     year_from: Optional[int] = None
     year_to: Optional[int] = None
     sources: Optional[List[str]] = None
+    snowball: bool = False
     progress: int = 0
     current_step: Optional[str] = None
     error: Optional[str] = None
@@ -232,6 +234,12 @@ class Candidate(BaseModel):
 
 class SearchOut(BaseModel):
     candidates: List[Candidate]
+
+
+class SnowballRequest(BaseModel):
+    """Candidate ids of the best-rated papers to follow citations from."""
+
+    seed_ids: List[int] = Field(min_length=1, max_length=5)
 
 
 class Relevance(BaseModel):

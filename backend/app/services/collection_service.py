@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.models import LiteratureReview, Paper, ProjectStatus, ResearchProject
-from app.services.search import search_papers
+from app.services.search import search_papers, snowball
 from app.utils.pdf_text import extract_pdf_text
 from app.utils.safe_http import USER_AGENT, fetch_public
 
@@ -128,6 +128,11 @@ async def default_candidates(
     return list(
         await search_papers(queries, limit, year_from=year_from, year_to=year_to, sources=sources)
     )
+
+
+async def default_neighbours(dois: List[str], limit: int) -> List[Dict[str, Any]]:
+    """Citation neighbours for snowballing. Module-level so tests can patch it."""
+    return list(await snowball(dois, limit))
 
 
 async def default_fetch_text(client: httpx.AsyncClient, url: str) -> Optional[str]:

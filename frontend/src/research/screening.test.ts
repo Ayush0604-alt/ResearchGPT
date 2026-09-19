@@ -7,6 +7,7 @@ import {
   screenCandidates,
   screeningPrompt,
   selectPapers,
+  snowballSeeds,
   SCREEN_BATCH,
   type Rating,
 } from './screening'
@@ -110,5 +111,16 @@ describe('selectPapers', () => {
 
   it('refuses to analyse unrelated papers', () => {
     expect(() => selectPapers([rating(0, 2), rating(1, 0)], 10)).toThrow(RunError)
+  })
+})
+
+describe('snowballSeeds', () => {
+  it('uses up to 3 of the best-rated candidates that have a DOI', () => {
+    const cands = [0, 1, 2, 3, 4].map((id) => ({
+      ...candidate(id),
+      doi: id === 1 ? null : `10.1/${id}`,
+    }))
+    const ratings = [rating(0, 6), rating(1, 10), rating(2, 9), rating(3, 8), rating(4, 2)]
+    expect(snowballSeeds(ratings, cands)).toEqual([2, 3, 0])
   })
 })

@@ -20,6 +20,7 @@ export interface Project {
   year_from: number | null
   year_to: number | null
   sources: SourceName[] | null
+  snowball: boolean
   progress: number
   current_step: string | null
   error: string | null

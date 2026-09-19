@@ -8,7 +8,7 @@ import { invalidateProjectResults, keys } from '../services/queries'
 import type { Project } from '../services/types'
 import { useLLMSettings } from '../store/llmSettings'
 import { runAnalysis, RunError, type AnalysisAPI } from './runAnalysis'
-import { planQueries, screenCandidates, selectPapers } from './screening'
+import { planQueries, screenCandidates, selectPapers, snowballSeeds } from './screening'
 
 export type RunPhase =
   'idle' | 'planning' | 'searching' | 'screening' | 'collecting' | 'extracting' | 'writing'
@@ -120,7 +120,7 @@ export function useResearchRun(projectId: string) {
 
   /** Plan queries, search, screen for relevance, collect the chosen papers on
    *  the server, then analyse them here. */
-  const start = (topic: string, maxPapers = 10) =>
+  const start = ({ topic, snowball }: Pick<Project, 'topic' | 'snowball'>, maxPapers = 10) =>
     track(async (signal) => {
       const settings = keySettings()
       const deps = {
@@ -149,9 +149,18 @@ export function useResearchRun(projectId: string) {
         )
       }
 
-      const ratings = await screenCandidates(topic, candidates, deps, (done, total) =>
-        setState({ phase: 'screening', done, total, failed: 0 }),
-      )
+      const onScreen = (done: number, total: number) =>
+        setState({ phase: 'screening', done, total, failed: 0 })
+      let ratings = await screenCandidates(topic, candidates, deps, onScreen)
+
+      // Snowballing: add papers the best matches cite or are cited by, screened too.
+      const seeds = snowball ? snowballSeeds(ratings, candidates) : []
+      if (seeds.length) {
+        setState({ ...IDLE, phase: 'searching' })
+        const added = (await projectsAPI.snowball(projectId, seeds)).data.candidates
+        if (added.length)
+          ratings = [...ratings, ...(await screenCandidates(topic, added, deps, onScreen))]
+      }
       const chosen = selectPapers(ratings, maxPapers)
 
       setState({ ...IDLE, phase: 'collecting' })

@@ -176,6 +176,68 @@ def rebuild_abstract(inverted: Optional[Dict[str, List[int]]]) -> str:
     return " ".join(word for _, word in sorted(positions))
 
 
+def _openalex_params(**extra: Any) -> Dict[str, Any]:
+    params: Dict[str, Any] = dict(extra)
+    if settings.CONTACT_EMAIL:
+        params["mailto"] = settings.CONTACT_EMAIL
+    if settings.OPENALEX_API_KEY:
+        params["api_key"] = settings.OPENALEX_API_KEY
+    return params
+
+
+def _openalex_record(w: Dict[str, Any]) -> PaperRecord:
+    best = w.get("best_oa_location") or {}
+    primary = w.get("primary_location") or {}
+    doi = normalize_doi(w.get("doi"))
+    return PaperRecord(
+        title=_clean(w.get("display_name") or w.get("title")),
+        authors=[
+            (a.get("author") or {}).get("display_name", "") for a in w.get("authorships") or []
+        ],
+        abstract=rebuild_abstract(w.get("abstract_inverted_index")),
+        year=w.get("publication_year"),
+        url=primary.get("landing_page_url") or w.get("doi") or w.get("id") or "",
+        pdf_url=best.get("pdf_url") or primary.get("pdf_url") or None,
+        doi=doi,
+        arxiv_id=arxiv_id_from(doi) if doi else None,
+        source="openalex",
+        external_id=(w.get("id") or "").rsplit("/", 1)[-1],
+    )
+
+
+async def openalex_neighbours(
+    client: httpx.AsyncClient, dois: List[str], limit: int
+) -> List[PaperRecord]:
+    """Snowballing: highly cited works that the seed papers reference, plus the
+    most-cited works that cite them. Seeds are identified by DOI."""
+    works_url = "https://api.openalex.org/works"
+    seeds = []
+    for doi in dois[:5]:
+        try:
+            seeds.append((await _get(client, f"{works_url}/doi:{doi}", _openalex_params())).json())
+        except httpx.HTTPError:
+            continue  # unknown to OpenAlex
+    if not seeds:
+        return []
+
+    referenced = [w.rsplit("/", 1)[-1] for s in seeds for w in s.get("referenced_works") or []]
+    seed_ids = [(s.get("id") or "").rsplit("/", 1)[-1] for s in seeds if s.get("id")]
+    queries = []
+    if referenced:
+        queries.append(f"openalex:{'|'.join(dict.fromkeys(referenced[:100]))},has_abstract:true")
+    if seed_ids:
+        queries.append(f"cites:{'|'.join(seed_ids)},has_abstract:true")
+
+    records: List[PaperRecord] = []
+    for filter_ in queries:
+        params = _openalex_params(
+            filter=filter_, sort="cited_by_count:desc", **{"per-page": min(limit, 50)}
+        )
+        data = (await _get(client, works_url, params)).json()
+        records.extend(_openalex_record(w) for w in data.get("results") or [])
+    return records
+
+
 async def openalex(
     client: httpx.AsyncClient,
     query: str,
@@ -188,40 +250,12 @@ async def openalex(
         filters.append(f"from_publication_date:{year_from}-01-01")
     if year_to:
         filters.append(f"to_publication_date:{year_to}-12-31")
-    params: Dict[str, Any] = {
-        "search": query,
-        "per-page": min(limit, 50),
-        "filter": ",".join(filters),
-    }
-    if settings.CONTACT_EMAIL:
-        params["mailto"] = settings.CONTACT_EMAIL
-    if settings.OPENALEX_API_KEY:
-        params["api_key"] = settings.OPENALEX_API_KEY
+    params = _openalex_params(
+        search=query, filter=",".join(filters), **{"per-page": min(limit, 50)}
+    )
     data = (await _get(client, "https://api.openalex.org/works", params)).json()
 
-    records: List[PaperRecord] = []
-    for w in data.get("results") or []:
-        best = w.get("best_oa_location") or {}
-        primary = w.get("primary_location") or {}
-        doi = normalize_doi(w.get("doi"))
-        records.append(
-            PaperRecord(
-                title=_clean(w.get("display_name") or w.get("title")),
-                authors=[
-                    (a.get("author") or {}).get("display_name", "")
-                    for a in w.get("authorships") or []
-                ],
-                abstract=rebuild_abstract(w.get("abstract_inverted_index")),
-                year=w.get("publication_year"),
-                url=primary.get("landing_page_url") or w.get("doi") or w.get("id") or "",
-                pdf_url=best.get("pdf_url") or primary.get("pdf_url") or None,
-                doi=doi,
-                arxiv_id=arxiv_id_from(doi) if doi else None,
-                source="openalex",
-                external_id=(w.get("id") or "").rsplit("/", 1)[-1],
-            )
-        )
-    return records
+    return [_openalex_record(w) for w in data.get("results") or []]
 
 
 # ── Europe PMC (covers PubMed, adds open-access full-text links) ────────────

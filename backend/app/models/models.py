@@ -84,6 +84,8 @@ class ResearchProject(Base):
     year_from: Mapped[Optional[int]] = mapped_column(Integer)
     year_to: Mapped[Optional[int]] = mapped_column(Integer)
     sources: Mapped[Optional[list]] = mapped_column(JSONB)  # None = all sources
+    # Also follow citations of the best candidates (snowballing).
+    snowball: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Latest search results, waiting to be screened in the browser.
     candidates: Mapped[Optional[list]] = mapped_column(JSONB, deferred=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())

@@ -151,3 +151,56 @@ async def test_search_queries_are_bounded(client, make_user, fake_search):
         headers=user["headers"],
     )
     assert too_many.status_code == 422
+
+
+async def test_snowball_adds_only_new_citation_neighbours(
+    client, make_user, fake_search, monkeypatch
+):
+    seen = {}
+
+    async def neighbours(dois, limit):
+        seen["dois"] = dois
+        return [
+            record(1),  # already a candidate (same DOI): skipped
+            record(7, title="Paper 2", doi=None),  # same title as a candidate: skipped
+            record(8, title="Foundational work"),
+            record(9, title="Follow-up study"),
+        ]
+
+    monkeypatch.setattr(collection_service, "default_neighbours", neighbours)
+    user = await make_user()
+    project = await _project(client, user, snowball=True)
+    assert project["snowball"] is True
+    h = user["headers"]
+    await client.post(f"/projects/{project['id']}/search", json={}, headers=h)
+
+    resp = await client.post(
+        f"/projects/{project['id']}/snowball", json={"seed_ids": [0, 2]}, headers=h
+    )
+
+    assert resp.status_code == 200
+    added = resp.json()["candidates"]
+    assert [(c["id"], c["title"]) for c in added] == [
+        (5, "Foundational work"),
+        (6, "Follow-up study"),
+    ]
+    assert seen["dois"] == ["10.1000/1", "10.1000/3"]
+    # The new candidates can be collected like any other.
+    collect = await client.post(
+        f"/projects/{project['id']}/collect", json={"candidate_ids": [0, 6]}, headers=h
+    )
+    assert collect.status_code == 202
+
+
+async def test_snowball_without_seed_dois_adds_nothing(client, make_user, monkeypatch):
+    async def candidates(queries, limit, **kwargs):
+        return [record(1, doi=None)]
+
+    monkeypatch.setattr(collection_service, "default_candidates", candidates)
+    user = await make_user()
+    pid = (await _project(client, user))["id"]
+    await client.post(f"/projects/{pid}/search", json={}, headers=user["headers"])
+    resp = await client.post(
+        f"/projects/{pid}/snowball", json={"seed_ids": [0]}, headers=user["headers"]
+    )
+    assert resp.json() == {"candidates": []}

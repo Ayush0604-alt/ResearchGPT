@@ -22,7 +22,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.models import SearchCache
 from app.services.search.merge import deduplicate, interleave
 from app.services.search.records import PaperRecord
-from app.services.search.sources import SOURCES, unpaywall_pdf
+from app.services.search.sources import SOURCES, openalex_neighbours, unpaywall_pdf
 from app.utils.safe_http import USER_AGENT
 
 PER_QUERY_LIMIT = 15
@@ -125,3 +125,14 @@ async def search_papers(
     with_pdf = sum(1 for r in merged if r.get("pdf_url"))
     logger.info(f"[Search] {len(merged)} papers ({with_pdf} with a PDF link) from {names}")
     return merged
+
+
+async def snowball(dois: List[str], limit: int) -> List[PaperRecord]:
+    """Papers connected to the seeds by citations (references and citing works),
+    de-duplicated, with open-access PDF links filled in where possible."""
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(20.0), headers={"User-Agent": USER_AGENT}
+    ) as client:
+        records = deduplicate(await openalex_neighbours(client, dois, limit))[:limit]
+        await _add_open_access_pdfs(client, records)
+    return records

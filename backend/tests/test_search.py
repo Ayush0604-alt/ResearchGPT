@@ -269,3 +269,34 @@ async def test_cache_can_be_disabled(monkeypatch):
         await search_papers(["x"], limit=5, sources=["semantic_scholar"])
         await search_papers(["x"], limit=5, sources=["semantic_scholar"])
     assert s2.call_count == 2
+
+
+async def test_snowball_follows_references_and_citations():
+    from app.services.search import snowball
+
+    work = {
+        "id": "https://openalex.org/W1",
+        "doi": "https://doi.org/10.2000/pe",
+        "referenced_works": ["https://openalex.org/W10", "https://openalex.org/W11"],
+    }
+    reference = OPENALEX_BODY["results"][0] | {"id": "https://openalex.org/W10", "doi": None}
+    citing = OPENALEX_BODY["results"][0] | {
+        "id": "https://openalex.org/W20",
+        "doi": "https://doi.org/10.9/citing",
+        "display_name": "A paper that cites it",
+    }
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(f"{OPENALEX}/doi:10.2000/pe").mock(return_value=httpx.Response(200, json=work))
+        mock.get(f"{OPENALEX}/doi:10.404/x").mock(return_value=httpx.Response(404))
+        refs = mock.get(OPENALEX, params__contains={"filter": "openalex:W10|W11,has_abstract:true"})
+        refs.mock(return_value=httpx.Response(200, json={"results": [reference]}))
+        cites = mock.get(OPENALEX, params__contains={"filter": "cites:W1,has_abstract:true"})
+        cites.mock(return_value=httpx.Response(200, json={"results": [citing]}))
+
+        records = await snowball(["10.2000/pe", "10.404/x"], limit=10)
+
+    assert refs.called and cites.called
+    assert [r["title"] for r in records] == [
+        "Positional Encodings for Graphs",
+        "A paper that cites it",
+    ]

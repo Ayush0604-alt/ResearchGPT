@@ -202,7 +202,7 @@ export default function ProjectPage() {
       !confirm('Search for papers again? This replaces the current papers and review.')
     )
       return
-    run.start(project.topic)
+    run.start(project)
   }
 
   const actions = () => {

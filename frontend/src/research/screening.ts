@@ -139,6 +139,16 @@ export async function screenCandidates(
   return candidates.map((c) => ratings.get(c.id) ?? { id: c.id, score: 0, reason: 'Not rated' })
 }
 
+/** Up to 3 of the best-rated candidates with a DOI, to follow citations from. */
+export function snowballSeeds(ratings: Rating[], candidates: Candidate[]): number[] {
+  const withDoi = new Set(candidates.filter((c) => c.doi).map((c) => c.id))
+  return [...ratings]
+    .sort((a, b) => b.score - a.score)
+    .filter((r) => r.score >= MIN_RELEVANCE && withDoi.has(r.id))
+    .slice(0, 3)
+    .map((r) => r.id)
+}
+
 /**
  * The papers to read: the best-rated first, those rated MIN_RELEVANCE or more,
  * up to `max`. If fewer than 3 clear that bar, the best few rated 3 or more are

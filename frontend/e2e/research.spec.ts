@@ -277,3 +277,19 @@ test('search filters are saved with the project', async ({ page }) => {
   expect(body.year_from).toBe(2020)
   expect(body.sources).toEqual(['semantic_scholar', 'openalex', 'europepmc'])
 })
+
+test('following citations adds papers the best matches cite', async ({ page }) => {
+  await stubGemini(page)
+  await signUpWithKey(page)
+  await page.goto('/project/new')
+  await page.getByLabel(/Research topic/).fill('graph attention')
+  await page.getByText('Search filters').click()
+  await page.getByLabel(/Also follow citations/).check()
+  await page.getByRole('button', { name: 'Create project' }).click()
+  await expect(page).toHaveURL(/\/project\/\d+$/)
+
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(/^4 papers ·/)).toBeVisible()
+  await expect(page.getByText('A Foundational Paper on Graph Attention')).toBeVisible()
+})

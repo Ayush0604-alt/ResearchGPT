@@ -31,6 +31,7 @@ export default function NewProjectPage() {
     year_from: '',
     year_to: '',
     sources: SOURCES.map(([value]) => value),
+    snowball: false,
   })
   const createProject = useCreateProject()
   const loading = createProject.isPending
@@ -49,6 +50,7 @@ export default function NewProjectPage() {
       year_to: form.year_to ? Number(form.year_to) : undefined,
       // Omitted when all are chosen, so new sources are included automatically.
       sources: form.sources.length === SOURCES.length ? undefined : form.sources,
+      snowball: form.snowball,
     }
     createProject.mutate(
       { topic, title, description, ...filters },
@@ -188,6 +190,20 @@ export default function NewProjectPage() {
                   ))}
                 </div>
               </fieldset>
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.snowball}
+                  onChange={(e) => setForm({ ...form, snowball: e.target.checked })}
+                />
+                <span>
+                  Also follow citations
+                  <span className="block text-xs text-gray-400">
+                    Adds key papers the best matches cite, and later work that cites them.
+                  </span>
+                </span>
+              </label>
             </div>
           </details>
 

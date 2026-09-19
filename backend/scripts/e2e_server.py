@@ -70,6 +70,7 @@ FAKE_PAPERS = [
         "pdf_url": "https://example.org/papers/1.pdf",
         "source": "arxiv",
         "external_id": "e2e-1",
+        "doi": "10.5555/e2e-1",
     },
     {
         "title": "Message Passing Networks Revisited",
@@ -108,7 +109,24 @@ def use_fake_sources() -> None:
         return [dict(p) for p in FAKE_PAPERS]
 
     collection_service.default_search = search
+
+    async def neighbours(dois, limit):
+        return [
+            {
+                "title": "A Foundational Paper on Graph Attention",
+                "authors": ["Donald Knuth"],
+                "abstract": "The original graph attention mechanism that later work builds on.",
+                "year": 2018,
+                "url": "https://example.org/papers/4",
+                "pdf_url": "https://example.org/papers/4.pdf",
+                "source": "openalex",
+                "external_id": "e2e-4",
+                "doi": "10.5555/e2e-4",
+            }
+        ]
+
     collection_service.default_candidates = candidates
+    collection_service.default_neighbours = neighbours
     collection_service.default_fetch_text = fetch_text
 
 

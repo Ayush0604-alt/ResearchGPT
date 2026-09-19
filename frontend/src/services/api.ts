@@ -87,12 +87,16 @@ export const projectsAPI = {
     year_from?: number
     year_to?: number
     sources?: SourceName[]
+    snowball?: boolean
   }) => api.post<Project>('/projects', data),
   get: (id: number | string) => api.get<Project>(`/projects/${id}`),
   delete: (id: number | string) => api.delete(`/projects/${id}`),
   /** Search every source with the topic plus planned queries; returns candidates. */
   search: (id: number | string, queries: string[]) =>
     api.post<{ candidates: Candidate[] }>(`/projects/${id}/search`, { queries }),
+  /** Add papers the seed candidates cite or are cited by; returns only new ones. */
+  snowball: (id: number | string, seedIds: number[]) =>
+    api.post<{ candidates: Candidate[] }>(`/projects/${id}/snowball`, { seed_ids: seedIds }),
   /** Start the server job that reads the chosen papers' PDFs. */
   collect: (
     id: number | string,
