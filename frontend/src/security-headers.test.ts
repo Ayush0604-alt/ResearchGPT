@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { PROVIDERS } from './llm'
 
 // The same security headers ship two ways: nginx (Docker) and public/_headers
 // (static hosts). They must not drift apart.
@@ -41,9 +42,10 @@ describe('security headers', () => {
       }),
     )
     expect(directives['script-src']).toEqual(["'self'"])
+    // Exactly the API hosts of the supported providers: adding a provider means adding its host.
     expect(directives['connect-src']).toEqual([
       "'self'",
-      'https://generativelanguage.googleapis.com',
+      ...Object.values(PROVIDERS).map((p) => `https://${p.apiHost}`),
     ])
     expect(directives['frame-ancestors']).toEqual(["'none'"])
     expect(directives['object-src']).toEqual(["'none'"])

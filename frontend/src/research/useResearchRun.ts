@@ -12,6 +12,9 @@ import { MAX_PDF_BYTES, toBase64 } from './pdf'
 import { runAnalysis, RunError, type AnalysisAPI } from './runAnalysis'
 import { planQueries, screenCandidates, selectPapers, snowballSeeds } from './screening'
 
+/** Papers collected per run. */
+export const MAX_PAPERS = 10
+
 export type RunPhase =
   | 'idle'
   | 'planning'
@@ -153,7 +156,10 @@ export function useResearchRun(projectId: string) {
 
   /** Plan queries, search, screen for relevance, collect the chosen papers on
    *  the server, then analyse them here. */
-  const start = ({ topic, snowball }: Pick<Project, 'topic' | 'snowball'>, maxPapers = 10) =>
+  const start = (
+    { topic, snowball }: Pick<Project, 'topic' | 'snowball'>,
+    maxPapers = MAX_PAPERS,
+  ) =>
     track(async (signal) => {
       const settings = keySettings()
       const startedAt = Date.now()

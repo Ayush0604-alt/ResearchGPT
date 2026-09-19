@@ -1,4 +1,5 @@
 import { toGeminiSchema } from '../schema'
+import { sseEvents } from '../sse'
 import {
   InvalidKeyError,
   LLMError,
@@ -126,22 +127,6 @@ const jsonPost = (body: unknown, signal?: AbortSignal): RequestInit => ({
   signal,
 })
 
-/** Split a server-sent-events buffer into complete `data:` payloads. */
-export function takeSSEEvents(buffer: string): { events: string[]; rest: string } {
-  const blocks = buffer.split(/\r?\n\r?\n/)
-  const rest = blocks.pop() ?? ''
-  const events = blocks
-    .map((block) =>
-      block
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trim())
-        .join(''),
-    )
-    .filter(Boolean)
-  return { events, rest }
-}
-
 interface GeminiModel {
   name: string
   displayName?: string
@@ -155,6 +140,7 @@ export const gemini: LLMProvider = {
   keyUrl: 'https://aistudio.google.com/app/apikey',
   apiHost: GEMINI_HOST,
   acceptsPdf: true,
+  defaultModels: { fast: 'gemini-2.5-flash', strong: 'gemini-2.5-pro' },
 
   async listModels(apiKey, signal) {
     const models: ModelInfo[] = []
@@ -198,23 +184,13 @@ export const gemini: LLMProvider = {
       jsonPost(requestBody(req), req.signal),
     )
     if (!resp.body) throw new LLMError('Streaming is not supported in this browser.')
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    for (;;) {
-      const { value, done } = await reader.read()
-      buffer += done ? decoder.decode() + '\n\n' : decoder.decode(value, { stream: true })
-      const { events, rest } = takeSSEEvents(buffer)
-      buffer = rest
-      for (const event of events) {
-        const chunk: GeminiResponse = JSON.parse(event)
-        if (finishReasonOf(chunk) === 'blocked') {
-          throw new LLMError('The model declined to answer (safety filter).')
-        }
-        const text = textOf(chunk)
-        if (text) yield text
+    for await (const event of sseEvents(resp.body)) {
+      const chunk: GeminiResponse = JSON.parse(event)
+      if (finishReasonOf(chunk) === 'blocked') {
+        throw new LLMError('The model declined to answer (safety filter).')
       }
-      if (done) break
+      const text = textOf(chunk)
+      if (text) yield text
     }
   },
 }

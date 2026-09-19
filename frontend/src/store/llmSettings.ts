@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { PROVIDERS } from '../llm'
+import type { Price } from '../llm/pricing'
 import type { ModelInfo, ProviderId } from '../llm/types'
 
 // The user's own LLM key. Stored ONLY in this browser (localStorage, under its
@@ -18,6 +20,11 @@ interface LLMSettingsState {
   synthModel: string
   /** Send the paper PDF itself when the provider can read it (tables, figures). */
   sendPdfs: boolean
+  /** The user's own prices (USD per million tokens), overriding the defaults. */
+  prices: Record<string, Price>
+  /** Switch provider. The key belongs to one provider, so it is cleared. */
+  setProvider: (provider: ProviderId) => void
+  setPrice: (model: string, price: Price | null) => void
   setKey: (apiKey: string) => void
   markVerified: (models: ModelInfo[]) => void
   setModels: (models: { extractModel?: string; synthModel?: string }) => void
@@ -25,41 +32,61 @@ interface LLMSettingsState {
   clear: () => void
 }
 
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+/** Words that mark a model family's fast or strong tier, for keys without the defaults. */
+const TIER_HINTS = { fast: /flash|haiku|mini/, strong: /pro|opus|sonnet|^gpt-5$/ }
 
-/** Prefer the default model when the key offers it, else the first "flash" model. */
-function pickDefault(models: ModelInfo[], current: string): string {
+/** Keep the current choice if the key offers it, else the provider's default for the tier. */
+export function pickModel(
+  models: ModelInfo[],
+  current: string,
+  provider: ProviderId,
+  tier: 'fast' | 'strong',
+): string {
   const ids = models.map((m) => m.id)
   if (ids.includes(current)) return current
-  if (ids.includes(DEFAULT_MODEL)) return DEFAULT_MODEL
-  return ids.find((id) => id.includes('flash')) ?? ids[0] ?? current
+  const preferred = PROVIDERS[provider].defaultModels[tier]
+  if (ids.includes(preferred)) return preferred
+  return ids.find((id) => TIER_HINTS[tier].test(id)) ?? ids[0] ?? current
 }
 
-const initial = {
-  provider: 'gemini' as ProviderId,
+const forProvider = (provider: ProviderId) => ({
+  provider,
   apiKey: '',
   verified: false,
   models: [] as ModelInfo[],
-  extractModel: DEFAULT_MODEL,
-  synthModel: DEFAULT_MODEL,
+  extractModel: PROVIDERS[provider].defaultModels.fast,
+  synthModel: PROVIDERS[provider].defaultModels.strong,
+})
+
+const initial = {
+  ...forProvider('gemini'),
   sendPdfs: true,
+  prices: {} as Record<string, Price>,
 }
 
 export const useLLMSettings = create<LLMSettingsState>()(
   persist(
     (set) => ({
       ...initial,
+      setProvider: (provider) => set((s) => (s.provider === provider ? {} : forProvider(provider))),
+      setPrice: (model, price) =>
+        set((s) => {
+          const prices = { ...s.prices }
+          if (price) prices[model] = price
+          else delete prices[model]
+          return { prices }
+        }),
       setKey: (apiKey) => set({ apiKey: apiKey.trim(), verified: false }),
       markVerified: (models) =>
         set((s) => ({
           verified: true,
           models,
-          extractModel: pickDefault(models, s.extractModel),
-          synthModel: pickDefault(models, s.synthModel),
+          extractModel: pickModel(models, s.extractModel, s.provider, 'fast'),
+          synthModel: pickModel(models, s.synthModel, s.provider, 'strong'),
         })),
       setModels: (models) => set(models),
       setSendPdfs: (sendPdfs) => set({ sendPdfs }),
-      clear: () => set(initial),
+      clear: () => set((s) => forProvider(s.provider)),
     }),
     { name: 'researchgpt-llm' },
   ),

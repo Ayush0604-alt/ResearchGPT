@@ -26,6 +26,7 @@ function fakeProvider(...replies: (Completion | Error)[]) {
     keyUrl: '',
     apiHost: '',
     acceptsPdf: false,
+    defaultModels: { fast: 'fast', strong: 'strong' },
     listModels: async () => [],
     stream: async function* () {},
     complete: vi.fn(async (req: CompletionRequest) => {

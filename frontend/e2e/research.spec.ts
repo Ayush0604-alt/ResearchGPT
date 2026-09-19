@@ -30,6 +30,132 @@ function geminiResponse(body: unknown) {
   }
 }
 
+/**
+ * What the stubbed model answers, whatever the provider: picked by the system
+ * prompt of each pipeline stage. Returns null for a paper extraction, which
+ * each stub handles itself (PDFs, rate limits).
+ */
+function answer(system: string, prompt: string, mode: Mode = 'ok'): unknown {
+  if (system.includes('search academic databases')) {
+    return { queries: ['graph neural networks', 'molecular graph learning'] }
+  }
+  if (system.includes('You screen papers')) {
+    const ids = [...prompt.matchAll(/<paper id="C(\d+)">/g)].map((m) => Number(m[1]))
+    return {
+      ratings: ids.map((id) => ({
+        id,
+        score: mode === 'one-irrelevant' && id === 1 ? 1 : 8,
+        reason: id === 1 && mode === 'one-irrelevant' ? 'Off topic' : 'Directly on topic',
+      })),
+    }
+  }
+  if (system.includes('fact-check')) {
+    // The first claim is flagged, the rest are supported.
+    const n = [...prompt.matchAll(/CLAIM (\d+):/g)].length
+    return {
+      checks: Array.from({ length: n }, (_, index) => ({
+        index,
+        verdict: index === 0 ? 'unsupported' : 'supported',
+        note: index === 0 ? 'The papers do not say this.' : '',
+      })),
+    }
+  }
+  if (system.includes('literature reviews')) {
+    const ids = [...prompt.matchAll(/<paper id="P(\d+)">/g)].map((m) => m[1])
+    return {
+      introduction: `Graph learning is moving fast [P${ids[0]}]. One claim is invented [P999999].`,
+      body: `Transformers [P${ids[0]}] and message passing [P${ids[1]}] are compared.`,
+      comparison: `| Paper | Approach |\n|---|---|\n| [P${ids[0]}] | Transformer |`,
+      trends: 'Attention everywhere.',
+      gaps: 'Scalability to large graphs.',
+      discussion: 'Evidence is mixed.',
+      conclusion: 'Promising but costly.',
+    }
+  }
+  return null
+}
+
+/** Stub Anthropic's Messages API (what the official SDK calls from the browser). */
+async function stubAnthropic(page: Page) {
+  const requests: { model: string; hasPdf: boolean }[] = []
+  await page.route('https://api.anthropic.com/**', async (route: Route) => {
+    const request = route.request()
+    if (request.headers()['x-api-key'] !== KEY) {
+      return route.fulfill({
+        status: 401,
+        json: {
+          type: 'error',
+          error: { type: 'authentication_error', message: 'invalid x-api-key' },
+        },
+      })
+    }
+    if (request.method() === 'GET') {
+      const model = (id: string, name: string) => ({
+        id,
+        display_name: name,
+        type: 'model',
+        created_at: '2026-01-01T00:00:00Z',
+      })
+      return route.fulfill({
+        json: {
+          data: [
+            model('claude-opus-5', 'Claude Opus 5'),
+            model('claude-haiku-4-5', 'Claude Haiku 4.5'),
+          ],
+          has_more: false,
+          first_id: 'claude-opus-5',
+          last_id: 'claude-haiku-4-5',
+        },
+      })
+    }
+    const body = request.postDataJSON()
+    const content: { type: string; text?: string }[] = body.messages[0].content
+    const prompt = content.find((b) => b.type === 'text')?.text ?? ''
+    requests.push({ model: body.model, hasPdf: content.some((b) => b.type === 'document') })
+    const reply = answer(body.system ?? '', prompt) ?? EXTRACTION
+    return route.fulfill({
+      json: {
+        id: 'msg_e2e',
+        type: 'message',
+        role: 'assistant',
+        model: body.model,
+        content: [{ type: 'text', text: JSON.stringify(reply) }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 100, output_tokens: 50 },
+      },
+    })
+  })
+  return { requests }
+}
+
+/** Stub OpenAI's Chat Completions API. */
+async function stubOpenAI(page: Page) {
+  const requests: { model: string; hasPdf: boolean }[] = []
+  await page.route('https://api.openai.com/**', async (route: Route) => {
+    const request = route.request()
+    if (request.headers()['authorization'] !== `Bearer ${KEY}`) {
+      return route.fulfill({ status: 401, json: { error: { message: 'Incorrect API key' } } })
+    }
+    if (request.method() === 'GET') {
+      return route.fulfill({ json: { data: [{ id: 'gpt-5' }, { id: 'gpt-5-mini' }] } })
+    }
+    const body = request.postDataJSON()
+    const [system, user] = body.messages
+    const parts: { type: string; text?: string }[] =
+      typeof user.content === 'string' ? [{ type: 'text', text: user.content }] : user.content
+    const prompt = parts.find((b) => b.type === 'text')?.text ?? ''
+    requests.push({ model: body.model, hasPdf: parts.some((b) => b.type === 'file') })
+    const reply = answer(system.content, prompt) ?? EXTRACTION
+    return route.fulfill({
+      json: {
+        choices: [{ message: { content: JSON.stringify(reply) }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+      },
+    })
+  })
+  return { requests }
+}
+
 /** Stub Gemini. Returns a setter to switch behaviour mid-test. */
 async function stubGemini(page: Page) {
   let mode: Mode = 'ok'
@@ -73,50 +199,8 @@ async function stubGemini(page: Page) {
       })
     }
 
-    if (system.includes('search academic databases')) {
-      return route.fulfill({
-        json: geminiResponse({ queries: ['graph neural networks', 'molecular graph learning'] }),
-      })
-    }
-    if (system.includes('You screen papers')) {
-      const ids = [...prompt.matchAll(/<paper id="C(\d+)">/g)].map((m) => Number(m[1]))
-      return route.fulfill({
-        json: geminiResponse({
-          ratings: ids.map((id) => ({
-            id,
-            score: mode === 'one-irrelevant' && id === 1 ? 1 : 8,
-            reason: id === 1 && mode === 'one-irrelevant' ? 'Off topic' : 'Directly on topic',
-          })),
-        }),
-      })
-    }
-    if (system.includes('fact-check')) {
-      // The first claim is flagged, the rest are supported.
-      const n = [...prompt.matchAll(/CLAIM (\d+):/g)].length
-      return route.fulfill({
-        json: geminiResponse({
-          checks: Array.from({ length: n }, (_, index) => ({
-            index,
-            verdict: index === 0 ? 'unsupported' : 'supported',
-            note: index === 0 ? 'The papers do not say this.' : '',
-          })),
-        }),
-      })
-    }
-    if (system.includes('literature reviews')) {
-      const ids = [...prompt.matchAll(/<paper id="P(\d+)">/g)].map((m) => m[1])
-      return route.fulfill({
-        json: geminiResponse({
-          introduction: `Graph learning is moving fast [P${ids[0]}]. One claim is invented [P999999].`,
-          body: `Transformers [P${ids[0]}] and message passing [P${ids[1]}] are compared.`,
-          comparison: `| Paper | Approach |\n|---|---|\n| [P${ids[0]}] | Transformer |`,
-          trends: 'Attention everywhere.',
-          gaps: 'Scalability to large graphs.',
-          discussion: 'Evidence is mixed.',
-          conclusion: 'Promising but costly.',
-        }),
-      })
-    }
+    const reply = answer(system, prompt, mode)
+    if (reply) return route.fulfill({ json: geminiResponse(reply) })
     extractions += 1
     const inline = body.contents[0].parts.find((p: { inlineData?: unknown }) => p.inlineData)
     if (inline) pdfExtractions.push(inline.inlineData.mimeType)
@@ -131,13 +215,14 @@ async function stubGemini(page: Page) {
   return { setMode: (m: Mode) => (mode = m), pdfExtractions }
 }
 
-async function signUpWithKey(page: Page) {
+async function signUpWithKey(page: Page, provider?: string) {
   const n = `${Date.now()}${Math.floor(Math.random() * 1000)}`
   await page.goto('/register')
   await page.getByLabel('Username').fill(`run_${n}`)
   await page.getByLabel('Email address').fill(`run_${n}@example.com`)
   await page.getByLabel('Password').fill('correct-horse-battery')
   await page.getByRole('button', { name: 'Create account' }).click()
+  if (provider) await page.getByLabel('Provider').selectOption({ label: provider })
   await page.getByLabel('API key').fill(KEY)
   await page.getByRole('button', { name: /Test & save key/ }).click()
   await expect(page.getByText('Key works').first()).toBeVisible()
@@ -342,3 +427,39 @@ test('papers with a PDF are sent to the model as the PDF itself', async ({ page 
   // Two of the three stub papers have a PDF link.
   expect(gemini.pdfExtractions).toEqual(['application/pdf', 'application/pdf'])
 })
+
+for (const [label, stub, models] of [
+  ['Anthropic Claude', stubAnthropic, ['claude-haiku-4-5', 'claude-opus-5']],
+  ['OpenAI', stubOpenAI, ['gpt-5-mini', 'gpt-5']],
+] as const) {
+  test(`a full run works with ${label}`, async ({ page }) => {
+    const apiRequestsWithKey: string[] = []
+    page.on('request', (r) => {
+      if (r.url().includes('/api/') && JSON.stringify([r.headers(), r.postData()]).includes(KEY)) {
+        apiRequestsWithKey.push(r.url())
+      }
+    })
+    const provider = await stub(page)
+    await signUpWithKey(page, label)
+    // Model tiers: a fast model reads papers, a strong one writes the review.
+    await expect(page.getByLabel('Model for reading each paper')).toHaveValue(models[0])
+    await expect(page.getByLabel('Model for the review and chat')).toHaveValue(models[1])
+
+    await newProject(page, `graph ${label}`)
+    await expect(page.getByTestId('run-cost')).toContainText(/\$\d/)
+    await page.getByRole('button', { name: 'Run analysis' }).click()
+    await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Analysed')).toHaveCount(3)
+
+    const used = new Set(provider.requests.map((r) => r.model))
+    expect([...used].sort()).toEqual([...models].sort())
+    expect(provider.requests.filter((r) => r.hasPdf)).toHaveLength(2) // the stub papers with a PDF
+    expect(apiRequestsWithKey).toEqual([])
+
+    await page.getByRole('link', { name: 'Review' }).click()
+    await expect(
+      page.getByRole('tabpanel').getByText(/Graph learning is moving fast/),
+    ).toBeVisible()
+    await expect(page.getByTestId('run-info')).toContainText(models[1])
+  })
+}

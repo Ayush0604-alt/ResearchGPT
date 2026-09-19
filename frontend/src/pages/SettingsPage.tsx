@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle, Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getProvider, InvalidKeyError } from '../llm'
+import { getProvider, InvalidKeyError, PROVIDERS, type ProviderId } from '../llm'
+import { priceFor, type Price } from '../llm/pricing'
 import { authAPI, errorMessage } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { useLLMSettings } from '../store/llmSettings'
@@ -37,6 +38,12 @@ export default function SettingsPage() {
     }
   }
 
+  const switchProvider = (id: ProviderId) => {
+    if (settings.apiKey && !confirm('Switching provider removes the current key. Continue?')) return
+    settings.setProvider(id)
+    setDraft('')
+  }
+
   const clearKey = () => {
     if (!confirm('Remove your API key from this browser?')) return
     settings.clear()
@@ -66,8 +73,17 @@ export default function SettingsPage() {
           <label htmlFor="llm-provider" className="label">
             Provider
           </label>
-          <select id="llm-provider" className="input" value={settings.provider} disabled>
-            <option value="gemini">{provider.label}</option>
+          <select
+            id="llm-provider"
+            className="input"
+            value={settings.provider}
+            onChange={(e) => switchProvider(e.target.value as ProviderId)}
+          >
+            {Object.values(PROVIDERS).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -180,6 +196,7 @@ export default function SettingsPage() {
               ))}
             </select>
           </div>
+          <PriceEditor models={[...new Set([settings.extractModel, settings.synthModel])]} />
         </div>
       )}
 
@@ -199,6 +216,60 @@ export default function SettingsPage() {
 
       <DeleteAccount />
     </div>
+  )
+}
+
+/** Prices used for the cost estimate shown before a run. */
+function PriceEditor({ models }: { models: string[] }) {
+  const { prices, setPrice } = useLLMSettings()
+  const update = (model: string, field: keyof Price, value: string) => {
+    const current = priceFor(model, prices) ?? { input: 0, output: 0 }
+    const n = Number(value)
+    if (value === '' || !Number.isFinite(n) || n < 0) return
+    setPrice(model, { ...current, [field]: n })
+  }
+  return (
+    <details className="text-sm">
+      <summary className="cursor-pointer text-gray-600">Prices for cost estimates</summary>
+      <p className="text-xs text-gray-400 my-2">
+        USD per million tokens. Defaults are list prices and may be out of date; check your
+        provider's pricing page.
+      </p>
+      <div className="space-y-2">
+        {models.map((model) => {
+          const price = priceFor(model, prices)
+          return (
+            <div key={model} className="flex flex-wrap items-center gap-2">
+              <code className="text-xs flex-1 min-w-40">{model}</code>
+              {(['input', 'output'] as const).map((field) => (
+                <label key={field} className="flex items-center gap-1 text-xs text-gray-500">
+                  {field}
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="input w-20 py-1"
+                    aria-label={`${model} ${field} price`}
+                    value={price?.[field] ?? ''}
+                    placeholder="?"
+                    onChange={(e) => update(model, field, e.target.value)}
+                  />
+                </label>
+              ))}
+              {prices[model] && (
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setPrice(model, null)}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </details>
   )
 }
 

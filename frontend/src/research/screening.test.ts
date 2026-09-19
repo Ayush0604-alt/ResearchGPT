@@ -20,6 +20,7 @@ function provider(answer: (req: CompletionRequest) => unknown) {
     keyUrl: '',
     apiHost: '',
     acceptsPdf: false,
+    defaultModels: { fast: 'fast', strong: 'strong' },
     listModels: async () => [],
     stream: async function* () {},
     complete: async (req) => {

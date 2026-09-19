@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
-import { GEMINI_HOST } from '../llm/providers/gemini'
+import { getProvider } from '../llm'
+import { useLLMSettings } from '../store/llmSettings'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -13,6 +14,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export default function PrivacyPage() {
+  const provider = getProvider(useLLMSettings((s) => s.provider))
+  const company = { gemini: 'Google', anthropic: 'Anthropic', openai: 'OpenAI' }[provider.id]
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-10">
       <div className="max-w-2xl mx-auto space-y-5">
@@ -31,14 +34,17 @@ export default function PrivacyPage() {
               <code>researchgpt-llm</code>).
             </li>
             <li>
-              It is sent <strong>only to {GEMINI_HOST}</strong>, in a request header, when your
-              browser analyses papers or answers a chat question.
+              It is sent <strong>only to {provider.apiHost}</strong> ({provider.label}, the provider
+              you chose in Settings), in a request header, when your browser analyses papers or
+              answers a chat question.
             </li>
             <li>
               It is <strong>never sent to ResearchGPT's servers</strong>, so we can't see, log or
               use it. You can check this in your browser's developer tools (Network tab).
             </li>
-            <li>Usage is billed to your own Google account under Google's terms.</li>
+            <li>
+              Usage is billed to your own {company} account under {company}'s terms.
+            </li>
             <li>
               Signing out keeps the key so you don't have to paste it again. On a shared computer,
               remove it in{' '}
@@ -74,12 +80,12 @@ export default function PrivacyPage() {
         <Section title="Who else sees what">
           <ul className="list-disc pl-5 space-y-1">
             <li>
-              Paper search services (Semantic Scholar, arXiv, PubMed) receive your research topic
-              from our server when papers are collected.
+              Paper search services (Semantic Scholar, OpenAlex, arXiv, Europe PMC and Unpaywall)
+              receive your search queries from our server when papers are collected.
             </li>
             <li>
-              Google receives the paper text and your questions from your browser, sent with your
-              key.
+              {company} receives the paper text (or PDF) and your questions from your browser, sent
+              with your key.
             </li>
             <li>No analytics or advertising scripts run on this site.</li>
           </ul>

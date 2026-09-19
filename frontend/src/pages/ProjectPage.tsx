@@ -19,6 +19,8 @@ import {
 import { BROWSER_PHASES, useResearchRun, type RunState } from '../research/useResearchRun'
 import { useFindings, usePapers, useProject, useSummaries } from '../services/queries'
 import type { Paper, PaperFindings, PaperSummary, Project } from '../services/types'
+import { estimateRun, formatUsd } from '../llm/pricing'
+import { MAX_PAPERS } from '../research/useResearchRun'
 import { useHasVerifiedKey, useLLMSettings } from '../store/llmSettings'
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -174,6 +176,25 @@ function PaperDetails({
   )
 }
 
+/** A rough price for one run with the current models, billed to the user's key. */
+function RunCost() {
+  const { extractModel, synthModel, sendPdfs, prices } = useLLMSettings()
+  const { usd, inputTokens, outputTokens } = estimateRun(
+    { papers: MAX_PAPERS, extractModel, synthModel, sendPdfs },
+    prices,
+  )
+  const tokens = `about ${Math.round((inputTokens + outputTokens) / 1000)}k tokens`
+  return (
+    <span
+      className="text-xs text-gray-400"
+      data-testid="run-cost"
+      title={`Estimate for ${MAX_PAPERS} papers, ${tokens}. Set prices in Settings.`}
+    >
+      {usd === null ? tokens : `≈ ${formatUsd(usd)} per run`}
+    </span>
+  )
+}
+
 export default function ProjectPage() {
   const { id = '' } = useParams()
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
@@ -241,6 +262,7 @@ export default function ProjectPage() {
             <Play size={13} /> Continue analysis
           </button>
         )}
+        {hasKey && <RunCost />}
         {hasKey && (
           <button
             onClick={startRun}

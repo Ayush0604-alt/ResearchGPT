@@ -1,7 +1,7 @@
 // Provider-neutral LLM types. The browser talks to the provider directly with
 // the user's own key; the ResearchGPT backend never sees the key.
 
-export type ProviderId = 'gemini'
+export type ProviderId = 'gemini' | 'anthropic' | 'openai'
 
 export interface ModelInfo {
   id: string
@@ -86,6 +86,11 @@ export interface LLMProvider {
   apiHost: string
   /** Can read PDF attachments directly (tables, figures, equations survive). */
   acceptsPdf: boolean
+  /**
+   * Default model tiers: `fast` reads each paper, `strong` writes the review and
+   * answers chat. Used when the key offers them; the user can pick others.
+   */
+  defaultModels: { fast: string; strong: string }
   listModels(apiKey: string, signal?: AbortSignal): Promise<ModelInfo[]>
   /** One request, no retries (see generate.ts for retries and validation). */
   complete(req: CompletionRequest): Promise<Completion>
