@@ -114,3 +114,15 @@ def make_user(client):
         }
 
     return _make
+
+
+@pytest.fixture
+def make_project(client):
+    """Create a project owned by `user` and return its id."""
+
+    async def _make(user, topic="graph neural networks"):
+        resp = await client.post("/projects", json={"topic": topic}, headers=user["headers"])
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    return _make

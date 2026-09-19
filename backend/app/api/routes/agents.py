@@ -57,7 +57,12 @@ async def run_agents(
         )
 
     task_id = f"task_{body.project_id}_{user_id}_{int(time.time())}"
-    _task_store[task_id] = {"status": "running", "progress": 0, "current_agent": "Starting"}
+    _task_store[task_id] = {
+        "user_id": user_id,
+        "status": "running",
+        "progress": 0,
+        "current_agent": "Starting",
+    }
 
     project.status = ProjectStatus.RUNNING.value
     project.task_id = task_id
@@ -77,9 +82,9 @@ async def run_agents(
 
 
 @router.get("/status/{task_id}", response_model=AgentStatusResponse)
-async def get_status(task_id: str):
+async def get_status(task_id: str, user_id: int = Depends(get_current_user_id)):
     task = _task_store.get(task_id)
-    if not task:
+    if not task or task.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Task not found")
     return AgentStatusResponse(
         task_id=task_id,
@@ -217,12 +222,16 @@ async def _run_workflow_background(
                 proj.status = ProjectStatus.COMPLETED.value
             await db.commit()
 
-        _task_store[task_id] = {"status": "completed", "progress": 100, "current_agent": "Done"}
+        _task_store.setdefault(task_id, {}).update(
+            {"status": "completed", "progress": 100, "current_agent": "Done"}
+        )
         logger.info(f"[Background] {task_id} completed")
 
     except Exception as e:
         logger.exception(f"[Background] {task_id} failed: {e}")
-        _task_store[task_id] = {"status": "failed", "progress": 0, "error": str(e)}
+        _task_store.setdefault(task_id, {}).update(
+            {"status": "failed", "progress": 0, "current_agent": None, "error": str(e)}
+        )
 
         try:
             async with AsyncSessionLocal() as db:

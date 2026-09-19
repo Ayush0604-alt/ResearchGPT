@@ -21,9 +21,8 @@ ROUTES = [
 ]
 
 
-async def _project_with_message(client, owner):
-    created = await client.post("/projects", json={"topic": "x"}, headers=owner["headers"])
-    pid = created.json()["id"]
+async def _project_with_message(make_project, owner):
+    pid = await make_project(owner)
     async with AsyncSessionLocal() as db:
         db.add(ChatMessage(project_id=pid, role="user", content="hello"))
         db.add(LiteratureReview(project_id=pid, introduction="secret"))
@@ -39,10 +38,10 @@ async def _message_count(pid):
 
 
 @pytest.mark.parametrize("method,path", ROUTES)
-async def test_other_users_project_is_not_found(client, make_user, method, path):
+async def test_other_users_project_is_not_found(client, make_user, make_project, method, path):
     alice = await make_user()
     bob = await make_user()
-    pid = await _project_with_message(client, alice)
+    pid = await _project_with_message(make_project, alice)
 
     body = {"project_id": pid, "question": "q", "max_papers": 1}
     resp = await client.request(
@@ -69,9 +68,9 @@ async def test_missing_project_is_not_found(client, make_user, method, path):
     assert resp.status_code == 404, resp.text
 
 
-async def test_owner_can_read_own_project_data(client, make_user):
+async def test_owner_can_read_own_project_data(client, make_user, make_project):
     alice = await make_user()
-    pid = await _project_with_message(client, alice)
+    pid = await _project_with_message(make_project, alice)
     h = alice["headers"]
 
     assert (await client.get(f"/papers/{pid}", headers=h)).json() == []

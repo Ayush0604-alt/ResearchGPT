@@ -18,11 +18,11 @@ async def test_project_crud(client, make_user):
     assert deleted.status_code == 204
 
 
-async def test_project_delete_is_persisted(client, make_user):
+async def test_project_delete_is_persisted(client, make_user, make_project):
     """Regression: 204 deletes used to be rolled back (see decisions.md D-12)."""
     user = await make_user()
     h = user["headers"]
-    pid = (await client.post("/projects", json={"topic": "x"}, headers=h)).json()["id"]
+    pid = await make_project(user)
 
     await client.delete(f"/projects/{pid}", headers=h)
 
@@ -30,11 +30,10 @@ async def test_project_delete_is_persisted(client, make_user):
     assert (await client.get("/projects", headers=h)).json()["total"] == 0
 
 
-async def test_projects_are_scoped_to_owner(client, make_user):
+async def test_projects_are_scoped_to_owner(client, make_user, make_project):
     alice = await make_user()
     bob = await make_user()
-    created = await client.post("/projects", json={"topic": "x"}, headers=alice["headers"])
-    pid = created.json()["id"]
+    pid = await make_project(alice)
 
     assert (await client.get("/projects", headers=bob["headers"])).json()["total"] == 0
     assert (await client.get(f"/projects/{pid}", headers=bob["headers"])).status_code == 404
