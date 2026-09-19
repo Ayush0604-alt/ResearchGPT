@@ -44,8 +44,10 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="Production-grade AI Research Assistant Platform",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Interactive docs only in development; production doesn't advertise the API.
+    docs_url="/docs" if settings.APP_ENV == "development" else None,
+    redoc_url="/redoc" if settings.APP_ENV == "development" else None,
+    openapi_url="/openapi.json" if settings.APP_ENV == "development" else None,
     lifespan=lifespan,
 )
 app.state.limiter = limiter
@@ -62,6 +64,24 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+API_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    # The API serves JSON only: nothing may load or frame it.
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    # Responses carry user data and session cookies: never cache them.
+    "Cache-Control": "no-store",
+}
+
+
+@app.middleware("http")
+async def api_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(settings.API_V1_PREFIX):
+        for name, value in API_SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+    return response
 
 
 @app.middleware("http")

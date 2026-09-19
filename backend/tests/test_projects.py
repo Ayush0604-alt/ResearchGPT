@@ -43,3 +43,11 @@ async def test_projects_are_scoped_to_owner(client, make_user, make_project):
 async def test_projects_require_auth(client):
     assert (await client.get("/projects")).status_code == 401
     assert (await client.post("/projects", json={"topic": "x"})).status_code == 401
+
+
+async def test_api_responses_carry_security_headers(client, make_user):
+    user = await make_user()
+    resp = await client.get("/projects", headers=user["headers"])
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["cache-control"] == "no-store"
+    assert resp.headers["content-security-policy"].startswith("default-src 'none'")
