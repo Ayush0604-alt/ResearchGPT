@@ -10,6 +10,10 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET_KEY = "dev_secret_key_change_in_production_min_32_chars"
+# The server must never hold an LLM key: users bring their own, and it stays in
+# their browser. These are refused outside development (see _no_server_llm_keys).
+LLM_KEY_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+
 _PLACEHOLDER_SECRETS = {
     _DEV_SECRET_KEY,
     "your_jwt_secret_key_here_min_32_chars",
@@ -45,13 +49,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/researchgpt"
     SYNC_DATABASE_URL: str = "postgresql+psycopg://postgres:password@localhost:5432/researchgpt"
 
-    # ── Google Gemini ──────────────────────────────────────────────────────────
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
-
     # ── Paper collection ───────────────────────────────────────────────────────
     # PDFs are read in memory and discarded; only extracted text is stored.
     MAX_PDF_SIZE_MB: int = 25
+
+    # ── LLM keys: must stay empty outside development ──────────────────────────
+    # Declared only so they're read like every other setting (env or .env) and
+    # can be refused below. Nothing on the server uses them.
+    GEMINI_API_KEY: str = ""
+    GOOGLE_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
 
     # ── CORS ───────────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
@@ -87,6 +95,23 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"SECRET_KEY is missing, too short or a placeholder (APP_ENV={self.APP_ENV}). "
                 "Generate one with: openssl rand -hex 32"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_server_llm_keys(self):
+        """Outside development, refuse to start if an LLM key is configured.
+
+        Such a key would be unused at best, and at worst a sign that server-side
+        LLM calls (billed to the operator) have crept back in.
+        """
+        if self.APP_ENV == "development":
+            return self
+        found = [name for name in LLM_KEY_VARS if getattr(self, name)]
+        if found:
+            raise ValueError(
+                f"{', '.join(found)} must not be set on the server (APP_ENV={self.APP_ENV}). "
+                "Users bring their own key in the browser."
             )
         return self
 

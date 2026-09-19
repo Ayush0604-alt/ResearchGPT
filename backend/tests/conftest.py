@@ -30,7 +30,6 @@ os.environ.update(
         "DATABASE_URL": TEST_DATABASE_URL,
         "SYNC_DATABASE_URL": TEST_DATABASE_URL.replace("+asyncpg", "+psycopg"),
         "SECRET_KEY": "test-secret-key-that-is-at-least-32-characters-long",
-        "GEMINI_API_KEY": "",  # tests must never reach a real LLM
         "DEBUG": "false",
         "BCRYPT_ROUNDS": "4",  # cheap hashes; production uses 12
     }

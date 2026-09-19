@@ -27,11 +27,6 @@ pydantic-settings==2.2.1
 email-validator==2.1.1
 
 # ==========================
-# Google Gemini
-# ==========================
-google-genai==1.2.0
-
-# ==========================
 # PDF text extraction (parses untrusted files: keep current)
 # ==========================
 pypdf==6.19.0

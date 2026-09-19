@@ -40,6 +40,11 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
+      # Users' LLM keys stay in their browsers: the server must not call an LLM.
+      - name: no LLM SDKs or calls on the server
+        run: |
+          ! grep -rnE "(import|from) +(google\.genai|google import genai|openai|anthropic)|generativelanguage\.googleapis|api\.openai\.com|api\.anthropic\.com" --include='*.py' app main.py
+          ! grep -niE "^(google-genai|google-generativeai|openai|anthropic|langchain)" requirements.txt
       - run: ruff format --check .
       - run: pytest -q
       # The suite leaves the test DB migrated to head: fail if models and migrations differ.

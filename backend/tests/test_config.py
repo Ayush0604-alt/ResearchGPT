@@ -31,3 +31,15 @@ def test_debug_and_sql_echo_default_off():
     s = _settings()
     assert s.DEBUG is False
     assert s.SQL_ECHO is False
+
+
+@pytest.mark.parametrize("var", ["GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"])
+def test_production_refuses_server_llm_keys(monkeypatch, var):
+    monkeypatch.setenv(var, "sk-something")
+    with pytest.raises(ValidationError, match=var):
+        _settings(APP_ENV="production", SECRET_KEY=STRONG)
+
+
+def test_development_tolerates_a_leftover_llm_key(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-old")
+    assert _settings(APP_ENV="development").APP_ENV == "development"

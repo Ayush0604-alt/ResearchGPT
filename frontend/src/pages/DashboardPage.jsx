@@ -6,7 +6,8 @@ import { useDeleteProject, useProjects } from '../services/queries'
 
 const STATUS = {
   pending: { label: 'Pending', cls: 'badge-amber', dot: 'bg-amber-400' },
-  running: { label: 'Running', cls: 'badge-blue', dot: 'bg-brand-400 animate-pulse' },
+  collecting: { label: 'Collecting', cls: 'badge-blue', dot: 'bg-brand-400 animate-pulse' },
+  collected: { label: 'Analysis pending', cls: 'badge-blue', dot: 'bg-brand-400' },
   completed: { label: 'Done', cls: 'badge-green', dot: 'bg-green-500' },
   failed: { label: 'Failed', cls: 'badge-red', dot: 'bg-red-400' },
 }
