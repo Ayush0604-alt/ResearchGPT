@@ -386,25 +386,33 @@ Add a server endpoint that returns the references and citing papers of chosen pa
 
 ## Phase 6: Read papers more deeply
 
-### ☐ Step 35: Send the PDF itself to the model · D§2, D§5
+### ☑ Step 35: Send the PDF itself to the model · D§2, D§5
 - Add `GET /papers/{id}/pdf`, which fetches the PDF through the SSRF guard and streams it to the client without saving it.
 - For providers that support PDF input, the map step sends the PDF itself. Otherwise it falls back to `full_text`.
 - Optional: use GROBID for section-level structure and parsed references.
 
 **Done when:** extractions for papers that contain tables include the numbers from those tables.
 
-### ☐ Step 36: Trustworthy output and exports · D§3, I§7
+### ☑ Step 36: Trustworthy output and exports · D§3, I§7
 - Add a citation check: each claim carries a supporting quote, and a cheap call confirms the quote supports the claim. Unsupported claims are flagged in the UI.
 - Make inline `[n]` citations in the review link to the paper cards. Add a comparison table tab.
 - Add **BibTeX/RIS** export of the paper list, and PDF/DOCX export of the review.
 
 **Done when:** each claim in the review links to a paper, and the BibTeX file imports into Zotero.
 
-### ☐ Step 37: Measure quality · I§3
+### ☑ Step 37: Measure quality · I§3
 - Store the prompt version, model, and token usage reported by the client for each run.
 - Build a small evaluation set of 5–10 fixed topics and a script that compares review quality across prompt versions.
 
 **Done when:** you can say whether a prompt change made results better or worse.
+
+> **Phase 6 notes (2026-09-19):** 170 backend, 71 unit and 19 end-to-end tests pass.
+> - **PDF input:** for models that accept PDFs (Gemini), the browser sends the PDF itself, fetched through `GET /papers/{project}/{paper}/pdf` (SSRF-guarded, streamed, never stored). It falls back to the extracted text if the model rejects the PDF. This is opt-in in Settings, because PDFs cost more tokens. GROBID was not added.
+> - **Citation check:** not implemented as "a quote for each claim". After the review is written, every sentence that cites papers (up to 40) is checked in batches of 10 against the cited papers' extracted findings. Each claim gets a verdict of supported, partly or unsupported. The check is best effort: if it fails, the review is still saved. Results are in a *Citation check* tab, and a banner shows how many claims are flagged.
+> - **Citations and exports:** `[P12]` markers render as numbered links, in order of first citation, with a References tab. The comparison table was already a tab. Exports are built in the browser: Markdown, BibTeX, RIS, and Print / Save as PDF through a print stylesheet. **DOCX was skipped**, because Markdown opens in Word and Google Docs and a DOCX library would add about 300 kB.
+> - **Quality:** each review stores `run_meta`: prompt version, models, per-model token usage for the whole run (a metering wrapper around the provider), duration, and invented citations removed. `scripts/eval_reviews.py` compares prompt versions on the fixed topics in `eval/topics.json`; see `eval/README.md`. It uses no LLM judge, so evaluation costs no extra tokens.
+> - **Bug found along the way:** Tailwind's `content` glob covered only `.js`/`.jsx`, so classes used only in the new `.tsx` files were missing from the CSS.
+> - **Migrations:** 0009 and 0010.
 
 ---
 
