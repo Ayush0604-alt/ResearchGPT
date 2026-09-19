@@ -52,7 +52,7 @@ Phase 0 Prep ─► Phase 1 Safe ─► Phase 2 Foundation ─► Phase 3 BYOK �
 
 ### ☑ Step 3: Backend test harness · I§5
 
-> **Done.** It uses a Compose `test` profile (`docker compose --profile test up -d test-db`, postgres on port 55432 with in-memory storage) instead of pytest-postgresql, because Windows has no local Postgres binaries. `conftest.py` refuses to run against any non-local database host. 8 tests pass.
+> **Done.** It uses a Compose `test` profile (now `docker compose -f docker-compose.test.yml up -d`, postgres on 127.0.0.1:55432 with in-memory storage) instead of pytest-postgresql, because Windows has no local Postgres binaries. `conftest.py` refuses to run against any non-local database host. 8 tests pass.
 
 - Add `pytest-asyncio`, `httpx` (`AsyncClient` + `ASGITransport`), `respx` and `pytest-postgresql` (or testcontainers).
 - Write fixtures that create a test database (run `alembic upgrade head` against it) and the helpers `make_user()` and `auth_headers(user)`.
@@ -74,7 +74,7 @@ Add a GitHub Actions workflow with two jobs:
 
 ## Phase 1: Make it safe (all P0 items and cheap P1s)
 
-### ☐ Step 5: Ownership checks on every project route · I§1 (IDOR)
+### ☑ Step 5: Ownership checks on every project route · I§1 (IDOR)
 - Add a `get_owned_project` dependency, in `app/api/deps.py` or `core/security.py`. It returns 404 when the project does not exist **or** belongs to someone else.
 - Use it in [papers.py](../backend/app/api/routes/papers.py) (all 3 routes), [reviews.py](../backend/app/api/routes/reviews.py) (both routes) and [chat.py](../backend/app/api/routes/chat.py) (`GET` and `DELETE /history`).
 - In `/chat/query`, `project_id` arrives in the request body, so check ownership inside the handler.
@@ -82,34 +82,34 @@ Add a GitHub Actions workflow with two jobs:
 
 **Done when:** the ownership test covers every route and passes.
 
-### ☐ Step 6: Protect `/agents/status` · I§1
+### ☑ Step 6: Protect `/agents/status` · I§1
 - Add `Depends(get_current_user_id)`. Store `user_id` in the `_task_store` entry and return 404 if it doesn't match the caller.
 - Add tests for: no token → 401, another user → 404.
 
 **Done when:** both tests pass.
 
-### ☐ Step 7: Configuration hardening · I§1, I§2 (minor items), I§1 (compose)
+### ☑ Step 7: Configuration hardening · I§1, I§2 (minor items), I§1 (compose)
 - In `config.py`: remove the default `SECRET_KEY`. Add a validator that fails at startup when `APP_ENV != "development"` and the key is shorter than 32 characters or is a known placeholder.
 - Change the `DEBUG` default to `False`. Add a separate `SQL_ECHO: bool = False` and use it in `session.py` instead of `echo=settings.DEBUG`.
 - In `docker-compose.yml`: read the Postgres password from `.env`, stop publishing ports 5432 and 6379 (or keep them only in a `docker-compose.override.yml` for dev), and remove the `version:` key.
 
 **Done when:** the app refuses to start in `APP_ENV=production` without a strong key, and a test proves it.
 
-### ☐ Step 8: Fix projects stuck in `running` · I§2 (P0)
+### ☑ Step 8: Fix projects stuck in `running` · I§2 (P0)
 - In `lifespan` startup: `UPDATE research_projects SET status='failed' WHERE status='running'`, and log how many rows it changed.
 - In `run_agents`: if the project is `running` but its `task_id` is not in `_task_store`, treat the run as stale and allow a new one.
 - In [ProjectPage.jsx](../frontend/src/pages/ProjectPage.jsx): when polling gets a 404, stop polling, set the status to `failed`, and show a toast asking the user to run again.
 
 **Done when:** you start a run, restart the backend, reload the page, and the project shows **Failed** with a working Run button.
 
-### ☐ Step 9: Docker cleanliness · I§5 (Docker)
+### ☑ Step 9: Docker cleanliness · I§5 (Docker)
 - Delete the `.dockerignore` line from the root `.gitignore`.
 - Add `backend/.dockerignore` (`venv/`, `storage/`, `logs/`, `.env`, `__pycache__/`, `.pytest_cache/`) and `frontend/.dockerignore` (`node_modules/`, `dist/`).
 - Frontend image: use `node:22-alpine` and `npm ci`.
 
 **Done when:** `docker compose build` works and `docker run --rm <backend-image> ls` shows no `venv`, `.env` or `storage`.
 
-### ☐ Step 10: Remove the XSS risk · I§7, D§1 (R4)
+### ☑ Step 10: Remove the XSS risk · I§7, D§1 (R4)
 - Replace `renderMd` and `dangerouslySetInnerHTML` in [ReviewPage.jsx](../frontend/src/pages/ReviewPage.jsx) with `react-markdown` + `remark-gfm` + `rehype-sanitize`.
 - Render chat answers with the same component.
 - Add a first CSP header in `nginx.conf`: `default-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'`.
@@ -117,7 +117,7 @@ Add a GitHub Actions workflow with two jobs:
 
 **Done when:** a review containing `<img src=x onerror=alert(1)>` renders as harmless text, and the browser console shows no CSP errors.
 
-### ☐ Step 11: Quick correctness fixes · I§1, I§2
+### ☑ Step 11: Quick correctness fixes · I§1, I§2
 - **Progress steps:** set `STEPS = ['Paper Search', 'Paper Collection', 'Comprehensive Analysis']`. Step 24 replaces this again, but the fix costs one line.
 - **Silent "Completed":** if the search returns 0 papers, or the analysis returns an empty review, raise an error with a clear reason. The project is then `failed` and the reason appears in the UI.
 - **Re-run:** show the Run button for `completed` projects as well, with a confirmation such as "This replaces the current results".
@@ -128,11 +128,16 @@ Add a GitHub Actions workflow with two jobs:
 
 **Done when:** each bullet has a test or a documented manual check, and CI passes.
 
-### ☐ Step 12: Replace unmaintained auth libraries · I§1
+### ☑ Step 12: Replace unmaintained auth libraries · I§1
 - Replace `python-jose` with `PyJWT`, and `passlib` with `pwdlib[bcrypt]` (or `bcrypt` directly). Remove the `bcrypt==3.2.0` pin.
 - Check that existing bcrypt hashes still verify. They are standard `$2b$` hashes, so they should.
 
 **Done when:** the auth tests pass and a user created before the change can still log in.
+
+> **Phase 1 notes (2026-09-19):** 75 backend and 8 frontend tests pass.
+> - Step 10 pulled Vitest forward from Step 17. It uses **Vitest 3**, because Vitest 5 needs Vite 6 or newer.
+> - Step 11 also re-checks `is_active` on every request. Step 12 also fixes a 500 error on tokens with a non-numeric `sub`.
+> - Step 9 added `.gitattributes` (`eol=lf`), because Docker builds copy the Windows working tree.
 
 > ✅ **At the end of Phase 1** the current app has no known security holes. It is still **not** deployed, because it still depends on a server-side Gemini key.
 
