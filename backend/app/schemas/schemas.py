@@ -206,6 +206,28 @@ class CitationCheck(BaseModel):
     note: Annotated[str, StringConstraints(max_length=300)] = ""
 
 
+ShortStr = Annotated[str, StringConstraints(max_length=100)]
+
+
+class ModelUsage(BaseModel):
+    calls: int = Field(ge=0)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+
+
+class RunMeta(BaseModel):
+    """How a review was produced, reported by the client that ran the pipeline."""
+
+    prompt_version: ShortStr
+    provider: ShortStr
+    models: Dict[ShortStr, ShortStr] = Field(max_length=10)
+    usage: Dict[ShortStr, ModelUsage] = Field(max_length=10)
+    duration_ms: int = Field(ge=0)
+    papers: int = Field(ge=0)
+    failed_papers: int = Field(ge=0)
+    removed_citations: int = Field(ge=0)
+
+
 class AnalysisIn(BaseModel):
     introduction: LongText
     body: LongText
@@ -215,7 +237,8 @@ class AnalysisIn(BaseModel):
     gaps: LongText = ""
     comparison: LongText = ""
     citation_checks: List[CitationCheck] = Field(default_factory=list, max_length=60)
-    model: Annotated[str, StringConstraints(max_length=100)] = ""
+    model: ShortStr = ""
+    run: Optional[RunMeta] = None
 
 
 # ── Collection ────────────────────────────────────────────────────────────────
@@ -278,6 +301,7 @@ class LiteratureReviewOut(BaseModel):
     gaps: Optional[str] = None
     comparison: Optional[str] = None
     citation_checks: Optional[List[Dict[str, Any]]] = None
+    run_meta: Optional[Dict[str, Any]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

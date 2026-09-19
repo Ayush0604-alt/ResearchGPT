@@ -14,7 +14,7 @@ import {
 } from '../research/exports'
 import { errorMessage } from '../services/api'
 import { usePapers, useProject, useReview } from '../services/queries'
-import type { CitationCheck, LiteratureReview, Paper } from '../services/types'
+import type { CitationCheck, LiteratureReview, Paper, RunMeta } from '../services/types'
 
 type Tab = keyof LiteratureReview | 'references' | 'checks'
 
@@ -22,6 +22,21 @@ const VERDICT_STYLE: Record<CitationCheck['verdict'], [string, string]> = {
   supported: ['badge-green', 'Supported'],
   partly: ['badge-amber', 'Partly supported'],
   unsupported: ['badge-red', 'Not supported'],
+}
+
+function RunInfo({ run }: { run: RunMeta }) {
+  const tokens = Object.values(run.usage).reduce(
+    (sum, u) => sum + u.input_tokens + u.output_tokens,
+    0,
+  )
+  const models = [...new Set(Object.values(run.models))].join(', ')
+  const minutes = Math.max(1, Math.round(run.duration_ms / 60_000))
+  return (
+    <p className="mt-3 text-xs text-gray-400 print:hidden" data-testid="run-info">
+      Made with {models} · {tokens.toLocaleString()} tokens · about {minutes} min · prompt version{' '}
+      {run.prompt_version}
+    </p>
+  )
 }
 
 function CitationChecks({
@@ -210,6 +225,7 @@ export default function ReviewPage() {
         <div className="card-p min-h-64" role="tabpanel">
           {content}
         </div>
+        {review.run_meta && <RunInfo run={review.run_meta} />}
       </div>
 
       {/* Print / Save as PDF: every section in order, then the references. */}

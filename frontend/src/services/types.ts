@@ -1,3 +1,5 @@
+import type { ModelUsage } from '../llm/meter'
+
 // Response shapes of the FastAPI backend (see backend/app/schemas/schemas.py).
 
 // collecting: server job (search + read PDFs); collected: papers ready for the
@@ -116,6 +118,18 @@ export interface CitationCheck {
   note: string
 }
 
+/** How a review was made; reported by the browser that ran the pipeline. */
+export interface RunMeta {
+  prompt_version: string
+  provider: string
+  models: Record<string, string>
+  usage: Record<string, ModelUsage>
+  duration_ms: number
+  papers: number
+  failed_papers: number
+  removed_citations: number
+}
+
 export interface AnalysisIn {
   introduction: string
   body: string
@@ -126,6 +140,7 @@ export interface AnalysisIn {
   comparison: string
   citation_checks: CitationCheck[]
   model: string
+  run?: RunMeta
 }
 
 export interface LiteratureReview {
@@ -139,6 +154,7 @@ export interface LiteratureReview {
   gaps: string | null
   comparison: string | null
   citation_checks: CitationCheck[] | null
+  run_meta: RunMeta | null
   created_at: string
 }
 

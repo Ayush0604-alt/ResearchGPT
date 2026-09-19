@@ -184,6 +184,9 @@ test('a full run: collect on the server, analyse in the browser, read the review
   await page.getByRole('tab', { name: 'Comparison' }).click()
   await expect(page.getByRole('cell', { name: 'Transformer' })).toBeVisible()
 
+  // How it was made: every model call was metered (the stub reports 150 tokens a call).
+  await expect(page.getByTestId('run-info')).toContainText(/gemini-2\.5-\w+ · [\d,]+ tokens/)
+
   // References are numbered in citation order.
   await page.getByRole('tab', { name: 'References' }).click()
   await expect(panel.getByRole('listitem')).toHaveCount(3)

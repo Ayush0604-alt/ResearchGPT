@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { InvalidKeyError, LLMError, type CompletionRequest, type LLMProvider } from '../llm/types'
-import type { PaperExtractionIn, PaperForAnalysis } from '../services/types'
-import { extractionPrompt, sanitizeCitations } from './prompts'
+import type { AnalysisIn, PaperExtractionIn, PaperForAnalysis } from '../services/types'
+import { meterUsage } from '../llm/meter'
+import { PROMPT_VERSION, extractionPrompt, sanitizeCitations } from './prompts'
 import { runAnalysis, RunError, type AnalysisAPI } from './runAnalysis'
 
 const EXTRACTION = {
@@ -72,7 +73,7 @@ function fakeProvider(onExtract?: (req: CompletionRequest) => unknown) {
 
 function fakeAPI(papers: PaperForAnalysis[]) {
   const saved = new Map<number, PaperExtractionIn>()
-  const api: AnalysisAPI & { saved: typeof saved; analysis?: unknown } = {
+  const api: AnalysisAPI & { saved: typeof saved; analysis?: AnalysisIn } = {
     saved,
     texts: async () => papers,
     summaries: async () =>
@@ -138,6 +139,30 @@ describe('runAnalysis', () => {
     })
     expect(result).toEqual({ failedPapers: 0, removedCitations: 1, unsupportedClaims: 1 })
     expect(d.onProgress).toHaveBeenLastCalledWith({ phase: 'checking' })
+  })
+
+  it('saves how the review was made: prompt version, models, usage', async () => {
+    const { provider } = fakeProvider()
+    const meter = meterUsage(provider)
+    const api = fakeAPI([paper(1), paper(2)])
+    await runAnalysis(7, 'graphs', {
+      ...deps(meter.provider, api),
+      usage: meter.usage,
+      startedAt: Date.now() - 5000,
+    })
+    const run = api.analysis?.run
+    expect(run).toMatchObject({
+      prompt_version: PROMPT_VERSION,
+      provider: 'gemini',
+      models: { extract: 'fast', review: 'strong' },
+      papers: 2,
+      failed_papers: 0,
+      removed_citations: 1,
+    })
+    expect(run?.duration_ms).toBeGreaterThanOrEqual(5000)
+    // 2 extractions + 1 fact-check on the fast model, 1 review on the strong one.
+    expect(run?.usage.fast.calls).toBe(3)
+    expect(run?.usage.strong.calls).toBe(1)
   })
 
   it('resumes: papers that already have an extraction are skipped', async () => {

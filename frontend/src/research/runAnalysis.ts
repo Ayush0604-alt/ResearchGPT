@@ -1,4 +1,5 @@
 import { generateJSON } from '../llm/generate'
+import type { ModelUsage } from '../llm/meter'
 import { InvalidKeyError, LLMError, RateLimitError, type LLMProvider } from '../llm/types'
 import type {
   AnalysisIn,
@@ -10,6 +11,7 @@ import type {
 import {
   EXTRACTION_SYSTEM,
   ExtractionSchema,
+  PROMPT_VERSION,
   REVIEW_SYSTEM,
   ReviewSchema,
   extractionPrompt,
@@ -49,6 +51,10 @@ export interface AnalysisDeps {
   concurrency?: number
   /** Base64 PDF for a paper, or null. Set only when PDFs should go to the model. */
   fetchPdf?: (paperId: number) => Promise<string | null>
+  /** Token usage of the whole run so far (see llm/meter.ts), saved with the review. */
+  usage?: () => Record<string, ModelUsage>
+  /** When the run began (ms), if it began before this analysis, e.g. with screening. */
+  startedAt?: number
 }
 
 export interface AnalysisResult {
@@ -102,6 +108,7 @@ export async function runAnalysis(
   deps: AnalysisDeps,
 ): Promise<AnalysisResult> {
   const { provider, apiKey, api, signal, onProgress } = deps
+  const startedAt = deps.startedAt ?? Date.now()
   const papers = await api.texts(projectId)
   if (papers.length === 0) throw new RunError('This project has no papers to analyse yet.')
 
@@ -210,6 +217,16 @@ export async function runAnalysis(
     ...review,
     citation_checks: checks ?? [],
     model: deps.synthModel,
+    run: {
+      prompt_version: PROMPT_VERSION,
+      provider: provider.id,
+      models: { extract: deps.extractModel, review: deps.synthModel },
+      usage: deps.usage?.() ?? {},
+      duration_ms: Math.max(0, Math.round(Date.now() - startedAt)),
+      papers: papers.length,
+      failed_papers: failed,
+      removed_citations: unknown.length,
+    },
   })
 
   return {

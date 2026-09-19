@@ -216,6 +216,10 @@ class LiteratureReview(Base):
     comparison: Mapped[Optional[str]] = mapped_column(Text)
     # Claim-level check of the review's citations: [{claim, paper_ids, verdict, note}].
     citation_checks: Mapped[Optional[list]] = mapped_column(JSONB)
+    # How the review was made, as reported by the browser that ran it:
+    # {prompt_version, provider, models, usage: {model: {calls, input_tokens,
+    # output_tokens}}, duration_ms, papers, failed_papers, removed_citations}.
+    run_meta: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
 
     project: Mapped["ResearchProject"] = relationship(

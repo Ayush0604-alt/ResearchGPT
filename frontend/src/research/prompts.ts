@@ -6,6 +6,13 @@ import type { PaperFindings, PaperForAnalysis, PaperSummary } from '../services/
 // Paper content comes from the internet, so it is wrapped in <paper> tags and
 // the model is told to treat it as data, never as instructions.
 
+/**
+ * Identifies the prompts (here, in screening.ts and in verify.ts) a review was
+ * made with, so reviews can be compared across prompt changes
+ * (backend/scripts/eval_reviews.py). Bump it whenever a prompt or schema changes.
+ */
+export const PROMPT_VERSION = '2026-09-19'
+
 /** Per-paper text budget (~15k tokens): enough for methods and results sections. */
 export const MAX_PAPER_CHARS = 60_000
 

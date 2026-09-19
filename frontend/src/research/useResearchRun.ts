@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { getProvider, InvalidKeyError, LLMError, RateLimitError } from '../llm'
 import { abortableSleep } from '../llm/retry'
+import { meterUsage, type UsageMeter } from '../llm/meter'
 import { errorMessage, papersAPI, projectsAPI } from '../services/api'
 import { invalidateProjectResults, keys } from '../services/queries'
 import type { Project } from '../services/types'
@@ -103,10 +104,17 @@ export function useResearchRun(projectId: string) {
     return settings
   }
 
-  async function analyse(topic: string, signal: AbortSignal) {
+  async function analyse(
+    topic: string,
+    signal: AbortSignal,
+    meter: UsageMeter = meterUsage(getProvider(keySettings().provider)),
+    startedAt = Date.now(),
+  ) {
     const settings = keySettings()
     const result = await runAnalysis(Number(projectId), topic, {
-      provider: getProvider(settings.provider),
+      provider: meter.provider,
+      usage: meter.usage,
+      startedAt,
       apiKey: settings.apiKey,
       extractModel: settings.extractModel,
       synthModel: settings.synthModel,
@@ -148,8 +156,11 @@ export function useResearchRun(projectId: string) {
   const start = ({ topic, snowball }: Pick<Project, 'topic' | 'snowball'>, maxPapers = 10) =>
     track(async (signal) => {
       const settings = keySettings()
+      const startedAt = Date.now()
+      // One meter for the whole run: planning, screening, extraction, review, check.
+      const meter = meterUsage(getProvider(settings.provider))
       const deps = {
-        provider: getProvider(settings.provider),
+        provider: meter.provider,
         apiKey: settings.apiKey,
         model: settings.extractModel,
         signal,
@@ -199,7 +210,7 @@ export function useResearchRun(projectId: string) {
       if (project.status !== 'collected') {
         throw new RunError(project.error || 'Collecting papers failed.')
       }
-      await analyse(project.topic, signal)
+      await analyse(project.topic, signal, meter, startedAt)
     })
 
   /** Analyse papers that were already collected (skips finished ones). */

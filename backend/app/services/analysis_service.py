@@ -107,6 +107,7 @@ async def save_analysis(db: AsyncSession, project: ResearchProject, data: Analys
     ):
         setattr(review, field, getattr(data, field))
     review.citation_checks = [c.model_dump() for c in data.citation_checks] or None
+    review.run_meta = data.run.model_dump() if data.run else None
     project.status = ProjectStatus.COMPLETED.value
     project.error = None
     project.finished_at = datetime.now(timezone.utc)
