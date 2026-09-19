@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle, Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getProvider, InvalidKeyError } from '../llm'
+import { authAPI, errorMessage } from '../services/api'
+import { useAuthStore } from '../store/authStore'
 import { useLLMSettings } from '../store/llmSettings'
 
 export default function SettingsPage() {
@@ -173,10 +175,71 @@ export default function SettingsPage() {
           <p className="font-medium text-gray-900">How your key is handled</p>
           <p>
             Stored only in this browser. Sent directly to <code>{provider.apiHost}</code>. Never
-            sent to ResearchGPT servers. Usage is billed to your {provider.label} account.
+            sent to ResearchGPT servers. Usage is billed to your {provider.label} account.{' '}
+            <Link to="/privacy" className="underline">
+              More about your data
+            </Link>
           </p>
         </div>
       </div>
+
+      <DeleteAccount />
     </div>
+  )
+}
+
+function DeleteAccount() {
+  const [password, setPassword] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const logout = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (
+      !confirm(
+        'Delete your account and all projects, papers, reviews and chats? This cannot be undone.',
+      )
+    )
+      return
+    setDeleting(true)
+    try {
+      await authAPI.deleteAccount(password)
+      logout()
+      toast.success('Your account was deleted')
+      navigate('/login')
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not delete the account'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="card-p space-y-3 border-red-100">
+      <p className="text-sm font-medium text-gray-900">Delete account</p>
+      <p className="text-xs text-gray-500">
+        Removes your account and every project, paper, review and chat. Your API key stays in this
+        browser until you clear it above.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          className="input flex-1"
+          placeholder="Your password"
+          aria-label="Password to confirm deletion"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+        <button
+          type="submit"
+          className="btn-secondary text-red-600"
+          disabled={!password || deleting}
+        >
+          Delete account
+        </button>
+      </div>
+    </form>
   )
 }

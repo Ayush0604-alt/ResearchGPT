@@ -114,3 +114,28 @@ test('sessions use httpOnly cookies, renew silently, and end on sign-out', async
   })
   expect(status).toBe(401)
 })
+
+test('the privacy page is public and explains where the key goes', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('link', { name: 'How your key and data are used' }).click()
+  await expect(page).toHaveURL(/\/privacy$/)
+  await expect(page.getByText(/never sent to ResearchGPT's servers/i)).toBeVisible()
+})
+
+test('deleting the account needs the password and signs the user out', async ({ page }) => {
+  const user = await register(page)
+  await page.goto('/settings')
+  page.on('dialog', (d) => d.accept())
+
+  await page.getByLabel('Password to confirm deletion').fill('wrong-password')
+  await page.getByRole('button', { name: 'Delete account' }).click()
+  await expect(page.getByText('Password is incorrect')).toBeVisible()
+
+  await page.getByLabel('Password to confirm deletion').fill(user.password)
+  await page.getByRole('button', { name: 'Delete account' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByLabel('Email address').fill(user.email)
+  await page.getByLabel('Password').fill(user.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByText('Invalid credentials')).toBeVisible()
+})

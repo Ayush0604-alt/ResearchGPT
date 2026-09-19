@@ -15,7 +15,7 @@ from app.core.rate_limit import limiter
 from app.core.security import get_current_user_id, hash_password, verify_password
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.schemas import UserLogin, UserOut, UserRegister
+from app.schemas.schemas import AccountDeletion, UserLogin, UserOut, UserRegister
 from app.services import session_service
 from app.services.session_service import REFRESH_COOKIE
 
@@ -90,3 +90,19 @@ async def me(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+@router.delete("/me", status_code=204)
+async def delete_account(
+    body: AccountDeletion,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Delete the account and everything in it (projects, papers, reviews,
+    chats, sessions cascade in the database). Requires the current password."""
+    user = await db.get(User, user_id)
+    if user is None or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status_code=403, detail="Password is incorrect")
+    await db.delete(user)
+    session_service.clear_cookies(response)

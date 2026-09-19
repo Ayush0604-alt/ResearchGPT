@@ -40,6 +40,10 @@ class UserLogin(BaseModel):
     password: str = Field(max_length=128)  # no minimum: existing accounts may predate it
 
 
+class AccountDeletion(BaseModel):
+    password: str = Field(max_length=128)
+
+
 class UserOut(BaseModel):
     id: int
     email: str

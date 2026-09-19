@@ -70,6 +70,8 @@ export const authAPI = {
   /** Sets the session cookies; returns the user. */
   login: (data: { email: string; password: string }) => api.post<User>('/auth/login', data),
   logout: () => api.post('/auth/logout'),
+  /** Deletes the account and all its data. */
+  deleteAccount: (password: string) => api.delete('/auth/me', { data: { password } }),
   me: () => api.get<User>('/auth/me'),
 }
 

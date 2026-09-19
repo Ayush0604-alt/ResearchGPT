@@ -10,6 +10,7 @@ import ProjectPage from './pages/ProjectPage'
 import ChatPage from './pages/ChatPage'
 import ReviewPage from './pages/ReviewPage'
 import SettingsPage from './pages/SettingsPage'
+import PrivacyPage from './pages/PrivacyPage'
 
 // Layout
 import AppLayout from './components/layout/AppLayout'
@@ -25,6 +26,7 @@ export default function App() {
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       {/* Protected — wrapped in layout */}
       <Route

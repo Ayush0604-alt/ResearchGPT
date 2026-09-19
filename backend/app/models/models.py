@@ -49,8 +49,10 @@ class User(Base):
         TZDateTime, server_default=func.now(), onupdate=func.now()
     )
 
+    # The database cascades deletes (ON DELETE CASCADE); passive_deletes lets it,
+    # instead of the ORM loading every child or nulling foreign keys.
     projects: Mapped[List["ResearchProject"]] = relationship(
-        "ResearchProject", back_populates="user"
+        "ResearchProject", back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -84,13 +86,17 @@ class ResearchProject(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="projects")
     papers: Mapped[List["Paper"]] = relationship(
-        "Paper", back_populates="project", cascade="all, delete-orphan"
+        "Paper", back_populates="project", cascade="all, delete-orphan", passive_deletes=True
     )
     literature_review: Mapped[Optional["LiteratureReview"]] = relationship(
-        "LiteratureReview", back_populates="project", uselist=False, cascade="all, delete-orphan"
+        "LiteratureReview",
+        back_populates="project",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     chat_messages: Mapped[List["ChatMessage"]] = relationship(
-        "ChatMessage", back_populates="project", cascade="all, delete-orphan"
+        "ChatMessage", back_populates="project", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -121,10 +127,18 @@ class Paper(Base):
 
     project: Mapped["ResearchProject"] = relationship("ResearchProject", back_populates="papers")
     summary: Mapped[Optional["PaperSummary"]] = relationship(
-        "PaperSummary", back_populates="paper", uselist=False, cascade="all, delete-orphan"
+        "PaperSummary",
+        back_populates="paper",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     findings: Mapped[Optional["PaperFindings"]] = relationship(
-        "PaperFindings", back_populates="paper", uselist=False, cascade="all, delete-orphan"
+        "PaperFindings",
+        back_populates="paper",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 

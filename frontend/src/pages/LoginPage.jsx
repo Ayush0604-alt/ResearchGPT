@@ -90,6 +90,11 @@ export default function LoginPage() {
             Create one
           </Link>
         </p>
+        <p className="text-center text-xs text-gray-400 mt-3">
+          <Link to="/privacy" className="underline">
+            How your key and data are used
+          </Link>
+        </p>
       </div>
     </div>
   )
