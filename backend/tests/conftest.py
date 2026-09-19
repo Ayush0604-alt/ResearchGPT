@@ -32,6 +32,7 @@ os.environ.update(
         "SECRET_KEY": "test-secret-key-that-is-at-least-32-characters-long",
         "GEMINI_API_KEY": "",  # tests must never reach a real LLM
         "DEBUG": "false",
+        "BCRYPT_ROUNDS": "4",  # cheap hashes; production uses 12
     }
 )
 

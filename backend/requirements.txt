@@ -16,11 +16,8 @@ psycopg[binary]>=3.2.2
 # ==========================
 # Auth & Security
 # ==========================
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-bcrypt==3.2.0
-cffi>=1.17.1
-cryptography>=43.0.1
+PyJWT==2.14.0
+pwdlib[bcrypt]==0.3.1
 
 # ==========================
 # Pydantic

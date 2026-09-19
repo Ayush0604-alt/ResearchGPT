@@ -6,7 +6,7 @@ Environment variables take precedence over .env.
 import json
 from typing import List
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET_KEY = "dev_secret_key_change_in_production_min_32_chars"
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # The default only works when APP_ENV=development (see _require_strong_secret).
     SECRET_KEY: str = _DEV_SECRET_KEY
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    BCRYPT_ROUNDS: int = Field(default=12, ge=4, le=16)  # tests use 4 for speed
     ALGORITHM: str = "HS256"
 
     # ── Database ───────────────────────────────────────────────────────────────
