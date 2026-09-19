@@ -26,6 +26,10 @@ TEXT_FORMAT = (
 
 
 def setup_logging():
+    # Windows defaults piped stdout to cp1252, which can't encode characters
+    # used in messages (e.g. "—"); loguru would drop those lines.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logger.remove()
     logger.configure(extra={"request_id": "-"})
     level = "DEBUG" if settings.DEBUG else "INFO"
