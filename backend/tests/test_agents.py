@@ -5,6 +5,7 @@ from app.api.routes.agents import fail_interrupted_runs
 from app.core.task_store import _task_store
 from app.db.session import AsyncSessionLocal
 from app.models.models import ResearchProject
+from app.utils.gemini_client import RateLimitError
 
 
 @pytest.fixture
@@ -113,3 +114,69 @@ async def test_app_startup_fails_interrupted_runs(client, make_user, make_projec
 
     project = await client.get(f"/projects/{pid}", headers=alice["headers"])
     assert project.json()["status"] == "failed"
+
+
+def _workflow_returning(monkeypatch, result=None, exc=None):
+    async def _fake(topic, project_id, max_papers, task_id):
+        if exc:
+            raise exc
+        return result
+
+    monkeypatch.setattr(agents_route, "run_research_workflow", _fake)
+
+
+async def _run_and_status(client, user, pid):
+    run = await client.post("/agents/run", json={"project_id": pid}, headers=user["headers"])
+    status = await client.get(f"/agents/status/{run.json()['task_id']}", headers=user["headers"])
+    project = await client.get(f"/projects/{pid}", headers=user["headers"])
+    _task_store.clear()
+    return status.json(), project.json()
+
+
+async def test_run_with_no_papers_fails_with_reason(client, make_user, make_project, monkeypatch):
+    _workflow_returning(monkeypatch, {"papers": [], "literature_review": {}})
+    user = await make_user()
+    pid = await make_project(user)
+
+    status, project = await _run_and_status(client, user, pid)
+
+    assert status["status"] == "failed"
+    assert "No papers" in status["error"]
+    assert project["status"] == "failed"
+
+
+async def test_run_with_empty_review_fails_and_keeps_old_results(
+    client, make_user, make_project, monkeypatch, fake_workflow
+):
+    user = await make_user()
+    pid = await make_project(user)
+    await _run_and_status(client, user, pid)  # first run succeeds (fake_workflow)
+
+    _workflow_returning(monkeypatch, {"papers": [{"title": "p"}], "literature_review": {}})
+    status, project = await _run_and_status(client, user, pid)
+
+    assert status["status"] == "failed"
+    assert "no review" in status["error"]
+    review = await client.get(f"/reviews/{pid}", headers=user["headers"])
+    assert review.json()["introduction"] == "intro"  # previous results survive
+
+
+async def test_run_error_message_hides_internals(client, make_user, make_project, monkeypatch):
+    _workflow_returning(monkeypatch, exc=RuntimeError("password=hunter2 at db-host:5432"))
+    user = await make_user()
+    pid = await make_project(user)
+
+    status, _ = await _run_and_status(client, user, pid)
+
+    assert status["status"] == "failed"
+    assert "hunter2" not in status["error"] and "db-host" not in status["error"]
+
+
+async def test_run_rate_limit_message(client, make_user, make_project, monkeypatch):
+    _workflow_returning(monkeypatch, exc=RateLimitError("429 ResourceExhausted"))
+    user = await make_user()
+    pid = await make_project(user)
+
+    status, _ = await _run_and_status(client, user, pid)
+
+    assert "rate limit" in status["error"]

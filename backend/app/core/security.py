@@ -9,8 +9,12 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.session import get_db
+from app.models.models import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -44,9 +48,21 @@ def decode_token(token: str) -> dict:
         ) from None
 
 
-async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
+async def get_current_user_id(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> int:
     payload = decode_token(token)
-    user_id: Optional[int] = payload.get("sub")
+    user_id: Optional[str] = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    # Tokens outlive account changes: re-check that the user still exists and is active.
+    is_active = await db.scalar(select(User.is_active).where(User.id == int(user_id)))
+    if not is_active:
+        raise HTTPException(
+            status_code=401,
+            detail="Account not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return int(user_id)

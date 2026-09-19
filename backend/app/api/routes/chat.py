@@ -7,7 +7,8 @@ Fix: delete route was missing `await db.commit()` — deletions were being
 """
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from loguru import logger
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,14 +17,14 @@ from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import ChatMessage, Paper, ResearchProject
 from app.schemas.schemas import ChatHistoryOut
-from app.utils.gemini_client import ask_gemini
+from app.utils.gemini_client import RateLimitError, ask_gemini
 
 router = APIRouter()
 
 
 class ChatQuery(BaseModel):
     project_id: int
-    question: str
+    question: str = Field(min_length=1, max_length=4000)
 
 
 @router.get("/history/{project_id}", response_model=ChatHistoryOut)
@@ -86,11 +87,14 @@ Question: {body.question}"""
 
     try:
         answer = await ask_gemini(prompt, max_tokens=2048)
-    except Exception as e:
-        answer = f"Sorry, I encountered an error: {e}"
+    except RateLimitError:
+        answer = "Sorry, the Gemini API rate limit was reached. Please wait a minute and ask again."
+    except Exception:
+        logger.exception(f"[Chat] Gemini call failed for project {body.project_id}")
+        answer = "Sorry, something went wrong while answering. Please try again."
 
     assistant_msg = ChatMessage(project_id=body.project_id, role="assistant", content=answer)
     db.add(assistant_msg)
     await db.commit()
 
-    return {"answer": answer, "sources": []}
+    return {"answer": answer, "citations": []}

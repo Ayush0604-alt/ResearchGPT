@@ -67,4 +67,24 @@ export const chatAPI = {
   query: (data) => api.post('/chat/query', data),
 }
 
+/**
+ * Turn an axios error into a message for a toast.
+ * FastAPI sends `detail` as a string (HTTPException) or, for 422 validation
+ * errors, as a list of {loc, msg} objects.
+ */
+export function errorMessage(err, fallback = 'Something went wrong') {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((d) => {
+        const field = d.loc?.[d.loc.length - 1]
+        const msg = (d.msg || '').replace(/^Value error, /, '')
+        return field && field !== 'body' ? `${field}: ${msg}` : msg
+      })
+      .join('; ')
+  }
+  return fallback
+}
+
 export default api

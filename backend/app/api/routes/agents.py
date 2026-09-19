@@ -32,8 +32,21 @@ from app.models.models import (
     ResearchProject,
 )
 from app.schemas.schemas import AgentRunRequest, AgentStatusResponse
+from app.utils.gemini_client import RateLimitError
 
 router = APIRouter()
+
+
+class PipelineError(Exception):
+    """A run failure whose message is safe to show to the user."""
+
+
+def _user_facing_error(exc: Exception) -> str:
+    if isinstance(exc, PipelineError):
+        return str(exc)
+    if isinstance(exc, RateLimitError):
+        return "The Gemini API rate limit was reached. Wait a minute, then run again."
+    return "The pipeline failed unexpectedly. Please try again."
 
 
 async def fail_interrupted_runs() -> int:
@@ -93,7 +106,7 @@ async def run_agents(
         task_id=task_id,
         project_id=body.project_id,
         topic=project.topic,
-        max_papers=body.max_papers or 10,
+        max_papers=body.max_papers,
     )
 
     return AgentStatusResponse(
@@ -131,6 +144,16 @@ async def _run_workflow_background(
             max_papers=max_papers,
             task_id=task_id,
         )
+
+        # Fail loudly instead of reporting an empty run as "completed".
+        # Raising here also keeps the previous run's results intact.
+        if not final_state.get("papers"):
+            raise PipelineError(
+                "No papers with abstracts were found for this topic. "
+                "Try a broader or differently worded topic."
+            )
+        if not final_state.get("literature_review"):
+            raise PipelineError("The analysis step returned no review. Please run again.")
 
         async with AsyncSessionLocal() as db:
             # ── Delete old data so re-runs don't hit unique-constraint violations ──
@@ -250,7 +273,12 @@ async def _run_workflow_background(
     except Exception as e:
         logger.exception(f"[Background] {task_id} failed: {e}")
         _task_store.setdefault(task_id, {}).update(
-            {"status": "failed", "progress": 0, "current_agent": None, "error": str(e)}
+            {
+                "status": "failed",
+                "progress": 0,
+                "current_agent": None,
+                "error": _user_facing_error(e),
+            }
         )
 
         try:

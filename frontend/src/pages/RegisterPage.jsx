@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FlaskConical, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { authAPI } from '../services/api'
+import { authAPI, errorMessage } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 
 export default function RegisterPage() {
@@ -23,7 +23,7 @@ export default function RegisterPage() {
       setAuth(data.access_token, { id: data.user_id, username: data.username, email: form.email })
       navigate('/dashboard')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Registration failed')
+      toast.error(errorMessage(err, 'Registration failed'))
     } finally {
       setLoading(false)
     }
@@ -48,6 +48,10 @@ export default function RegisterPage() {
                 type="text"
                 className="input"
                 placeholder="johndoe"
+                minLength={3}
+                maxLength={50}
+                pattern="[A-Za-z0-9_]+"
+                title="3–50 letters, numbers or underscores"
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 required

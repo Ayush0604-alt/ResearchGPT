@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FlaskConical, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { authAPI } from '../services/api'
+import { authAPI, errorMessage } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 
 export default function LoginPage() {
@@ -19,7 +19,7 @@ export default function LoginPage() {
       setAuth(data.access_token, { id: data.user_id, username: data.username, email: form.email })
       navigate('/dashboard')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Invalid email or password')
+      toast.error(errorMessage(err, 'Invalid email or password'))
     } finally {
       setLoading(false)
     }

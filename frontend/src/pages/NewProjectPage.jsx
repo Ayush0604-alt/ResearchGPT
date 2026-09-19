@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { projectsAPI } from '../services/api'
+import { projectsAPI, errorMessage } from '../services/api'
 
 const EXAMPLES = [
   'AI in Healthcare Diagnostics',
@@ -30,7 +30,7 @@ export default function NewProjectPage() {
       toast.success('Project created')
       navigate(`/project/${data.id}`)
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to create project')
+      toast.error(errorMessage(err, 'Failed to create project'))
     } finally {
       setLoading(false)
     }
@@ -64,6 +64,8 @@ export default function NewProjectPage() {
               type="text"
               className="input"
               placeholder="e.g. AI in Healthcare Diagnostics"
+              minLength={3}
+              maxLength={300}
               value={form.topic}
               onChange={(e) => setForm({ ...form, topic: e.target.value })}
               required

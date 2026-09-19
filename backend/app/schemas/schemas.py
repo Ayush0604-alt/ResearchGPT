@@ -8,22 +8,41 @@ Fixes:
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, StringConstraints, field_validator
+
+# Trimmed strings with bounds. DB columns: title/topic String(500).
+Topic = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=300)]
+Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+Description = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)]
+Username = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=3, max_length=50, pattern=r"^[A-Za-z0-9_]+$"
+    ),
+]
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 
 class UserRegister(BaseModel):
     email: EmailStr
-    username: str
-    password: str
+    username: Username
+    password: str = Field(min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def _fits_bcrypt(cls, v: str) -> str:
+        # bcrypt only uses the first 72 bytes; reject rather than silently truncate.
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
+        return v
 
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=128)  # no minimum: existing accounts may predate it
 
 
 class TokenResponse(BaseModel):
@@ -47,9 +66,9 @@ class UserOut(BaseModel):
 
 
 class ProjectCreate(BaseModel):
-    topic: str
-    title: Optional[str] = None
-    description: Optional[str] = None
+    topic: Topic
+    title: Optional[Title] = None
+    description: Optional[Description] = None
 
 
 class ProjectOut(BaseModel):
@@ -129,7 +148,7 @@ class FindingsOut(BaseModel):
 
 class AgentRunRequest(BaseModel):
     project_id: int
-    max_papers: Optional[int] = 10
+    max_papers: int = Field(default=10, ge=1, le=25)
 
 
 class AgentStatusResponse(BaseModel):

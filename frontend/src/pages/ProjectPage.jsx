@@ -14,19 +14,10 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { projectsAPI, agentsAPI, papersAPI } from '../services/api'
+import { projectsAPI, agentsAPI, papersAPI, errorMessage } from '../services/api'
 
-const STEPS = [
-  'Paper Search',
-  'Paper Collection',
-  'Doc Processing',
-  'Summarization',
-  'Key Findings',
-  'Comparison',
-  'Trend Analysis',
-  'Research Gaps',
-  'Lit. Review',
-]
+// Must match the current_agent names reported by backend/app/agents/workflow.py
+const STEPS = ['Paper Search', 'Paper Collection', 'Comprehensive Analysis']
 
 const SOURCE_LABELS = {
   arxiv: 'arXiv',
@@ -80,6 +71,11 @@ export default function ProjectPage() {
   }
 
   const startPipeline = async () => {
+    if (
+      project.status === 'completed' &&
+      !confirm('Run the pipeline again? This replaces the current papers and review.')
+    )
+      return
     setStarting(true)
     try {
       const { data } = await agentsAPI.run({ project_id: parseInt(id), max_papers: 10 })
@@ -88,7 +84,7 @@ export default function ProjectPage() {
       poll(data.task_id)
       toast.success('Pipeline started!')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to start pipeline')
+      toast.error(errorMessage(err, 'Failed to start pipeline'))
       setStarting(false)
     }
   }
@@ -185,15 +181,19 @@ export default function ProjectPage() {
                 </Link>
               </>
             )}
-            {(isPending || isFailed) && (
-              <button onClick={startPipeline} disabled={starting} className="btn-primary btn-sm">
+            {(isPending || isFailed || isCompleted) && (
+              <button
+                onClick={startPipeline}
+                disabled={starting}
+                className={isCompleted ? 'btn-secondary btn-sm' : 'btn-primary btn-sm'}
+              >
                 {starting ? (
                   <>
                     <Loader2 size={13} className="animate-spin" /> Starting…
                   </>
                 ) : (
                   <>
-                    <Play size={13} /> Run pipeline
+                    <Play size={13} /> {isCompleted ? 'Run again' : 'Run pipeline'}
                   </>
                 )}
               </button>
