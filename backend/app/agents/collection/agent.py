@@ -5,10 +5,9 @@ Downloads PDFs from URLs and stores them locally (S3-ready).
 Fix: partial file is removed when download is aborted due to size limit,
      so the next run will retry instead of treating the truncated file as valid.
 """
-import os
 import hashlib
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import aiofiles
 import httpx

@@ -1,14 +1,19 @@
 """
 Auth Routes: /api/auth
 """
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import (
+    create_access_token,
+    get_current_user_id,
+    hash_password,
+    verify_password,
+)
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.schemas import UserRegister, UserLogin, TokenResponse, UserOut
-from app.core.security import hash_password, verify_password, create_access_token, get_current_user_id
+from app.schemas.schemas import TokenResponse, UserLogin, UserOut, UserRegister
 
 router = APIRouter()
 

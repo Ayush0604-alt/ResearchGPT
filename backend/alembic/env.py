@@ -1,14 +1,17 @@
 """Alembic migration environment."""
+import os
+import sys
 from logging.config import fileConfig
+
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
-import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+import app.models.models  # noqa: F401 — ensure models are imported
 from app.core.config import settings
 from app.db.base import Base
-import app.models.models  # noqa: F401 — ensure models are imported
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.SYNC_DATABASE_URL)

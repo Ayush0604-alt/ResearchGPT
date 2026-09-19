@@ -1,16 +1,15 @@
 """
 SQLAlchemy ORM models for ResearchGPT.
 """
-from datetime import datetime
-from typing import Optional, List
 import enum
+from datetime import datetime
+from typing import List, Optional
 
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, Float, ForeignKey, JSON
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
-
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 

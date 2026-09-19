@@ -1,9 +1,11 @@
 import json
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from loguru import logger
 from pydantic import BaseModel
 
 from app.utils.gemini_client import ask_gemini
+
 
 class LiteratureReviewSchema(BaseModel):
     introduction: str

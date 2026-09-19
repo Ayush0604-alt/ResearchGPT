@@ -8,6 +8,7 @@ Fixes:
 from google import genai
 from google.genai import types
 from loguru import logger
+
 from app.core.config import settings
 
 _client = None

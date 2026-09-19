@@ -5,15 +5,15 @@ Fix: delete route was missing `await db.commit()` — deletions were being
      rolled back by the session context manager's exception handler path,
      so clearing chat history appeared to work but messages reappeared on reload.
 """
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
-
-from app.db.session import get_db
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import get_current_user_id
+from app.db.session import get_db
 from app.models.models import ChatMessage, Paper
 from app.schemas.schemas import ChatHistoryOut
-from app.core.security import get_current_user_id
 from app.utils.gemini_client import ask_gemini
 
 router = APIRouter()

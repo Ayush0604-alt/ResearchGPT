@@ -2,14 +2,15 @@
 Papers Routes: /api/papers
 """
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.db.session import get_db
-from app.models.models import Paper, PaperSummary, PaperFindings
-from app.schemas.schemas import PaperOut, SummaryOut, FindingsOut
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import get_current_user_id
+from app.db.session import get_db
+from app.models.models import Paper, PaperFindings, PaperSummary
+from app.schemas.schemas import FindingsOut, PaperOut, SummaryOut
 
 router = APIRouter()
 

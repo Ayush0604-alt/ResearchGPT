@@ -2,7 +2,9 @@
 Loguru-based structured logging configuration.
 """
 import sys
+
 from loguru import logger
+
 from app.core.config import settings
 
 

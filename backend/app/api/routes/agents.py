@@ -8,25 +8,28 @@ Fixes:
 - Duplicate-run guard only blocks RUNNING status, not FAILED/COMPLETED
 - Old data deleted before re-run to avoid unique-constraint violations
 """
-import asyncio
 import json
 import time
-from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db, AsyncSessionLocal
-from app.models.models import (
-    ResearchProject, Paper, PaperSummary, PaperFindings,
-    LiteratureReview, Presentation, ProjectStatus,
-)
-from app.schemas.schemas import AgentRunRequest, AgentStatusResponse
+from app.agents.workflow import run_research_workflow
 from app.core.security import get_current_user_id
 from app.core.task_store import _task_store
-from app.agents.workflow import run_research_workflow
-from loguru import logger
+from app.db.session import AsyncSessionLocal, get_db
+from app.models.models import (
+    LiteratureReview,
+    Paper,
+    PaperFindings,
+    PaperSummary,
+    Presentation,
+    ProjectStatus,
+    ResearchProject,
+)
+from app.schemas.schemas import AgentRunRequest, AgentStatusResponse
 
 router = APIRouter()
 

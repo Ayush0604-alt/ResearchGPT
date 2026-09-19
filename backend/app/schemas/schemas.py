@@ -7,9 +7,9 @@ Fixes:
 - RAGResponse.citations uses List[Dict] as fallback if structured parsing fails.
 """
 from datetime import datetime
-from typing import Optional, List, Any, Dict, Union
-from pydantic import BaseModel, EmailStr, field_validator
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, EmailStr
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 

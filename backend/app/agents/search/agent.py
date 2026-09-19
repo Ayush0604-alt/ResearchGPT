@@ -3,12 +3,11 @@ Agent 1: Paper Search Agent
 Searches Semantic Scholar, ArXiv, and PubMed for relevant papers.
 """
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
+
 import httpx
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
-
-from app.core.config import settings
 
 
 class PaperSearchAgent:
