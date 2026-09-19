@@ -40,6 +40,35 @@ export class LLMError extends Error {
   }
 }
 
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export interface CompletionRequest {
+  apiKey: string
+  model: string
+  system?: string
+  messages: ChatTurn[]
+  maxOutputTokens?: number
+  temperature?: number
+  /** When set, the provider is asked for JSON matching this schema. */
+  schema?: import('zod').ZodType
+  signal?: AbortSignal
+}
+
+export interface Usage {
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface Completion {
+  text: string
+  /** 'length' = cut off by maxOutputTokens; 'blocked' = safety filter. */
+  finishReason: 'stop' | 'length' | 'blocked' | 'other'
+  usage?: Usage
+}
+
 export interface LLMProvider {
   id: ProviderId
   label: string
@@ -48,4 +77,8 @@ export interface LLMProvider {
   /** Domain the key is sent to (shown to users and allowed by the CSP). */
   apiHost: string
   listModels(apiKey: string, signal?: AbortSignal): Promise<ModelInfo[]>
+  /** One request, no retries (see generate.ts for retries and validation). */
+  complete(req: CompletionRequest): Promise<Completion>
+  /** Yields text chunks as they arrive. */
+  stream(req: CompletionRequest): AsyncGenerator<string>
 }

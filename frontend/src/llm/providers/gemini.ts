@@ -1,7 +1,10 @@
+import { toGeminiSchema } from '../schema'
 import {
   InvalidKeyError,
   LLMError,
   RateLimitError,
+  type Completion,
+  type CompletionRequest,
   type LLMProvider,
   type ModelInfo,
 } from '../types'
@@ -68,6 +71,74 @@ export async function geminiFetch(
   return resp
 }
 
+interface GeminiResponse {
+  candidates?: {
+    content?: { parts?: { text?: string; thought?: boolean }[] }
+    finishReason?: string
+  }[]
+  promptFeedback?: { blockReason?: string }
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+}
+
+function requestBody(req: CompletionRequest) {
+  return {
+    contents: req.messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.text }],
+    })),
+    ...(req.system ? { systemInstruction: { parts: [{ text: req.system }] } } : {}),
+    generationConfig: {
+      temperature: req.temperature ?? 0.3,
+      maxOutputTokens: req.maxOutputTokens ?? 8192,
+      ...(req.schema
+        ? { responseMimeType: 'application/json', responseSchema: toGeminiSchema(req.schema) }
+        : {}),
+    },
+  }
+}
+
+/** Text of the first candidate, without "thought" parts. */
+function textOf(data: GeminiResponse): string {
+  const parts = data.candidates?.[0]?.content?.parts ?? []
+  return parts
+    .filter((p) => !p.thought)
+    .map((p) => p.text ?? '')
+    .join('')
+}
+
+const BLOCKED = ['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII']
+
+function finishReasonOf(data: GeminiResponse): Completion['finishReason'] {
+  if (data.promptFeedback?.blockReason) return 'blocked'
+  const reason = data.candidates?.[0]?.finishReason
+  if (!reason || reason === 'STOP') return 'stop'
+  if (reason === 'MAX_TOKENS') return 'length'
+  return BLOCKED.includes(reason) ? 'blocked' : 'other'
+}
+
+const jsonPost = (body: unknown, signal?: AbortSignal): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+  signal,
+})
+
+/** Split a server-sent-events buffer into complete `data:` payloads. */
+export function takeSSEEvents(buffer: string): { events: string[]; rest: string } {
+  const blocks = buffer.split(/\r?\n\r?\n/)
+  const rest = blocks.pop() ?? ''
+  const events = blocks
+    .map((block) =>
+      block
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .join(''),
+    )
+    .filter(Boolean)
+  return { events, rest }
+}
+
 interface GeminiModel {
   name: string
   displayName?: string
@@ -97,5 +168,49 @@ export const gemini: LLMProvider = {
       pageToken = data.nextPageToken ?? ''
     } while (pageToken)
     return models.sort((a, b) => a.id.localeCompare(b.id))
+  },
+
+  async complete(req) {
+    const resp = await geminiFetch(
+      req.apiKey,
+      `/models/${encodeURIComponent(req.model)}:generateContent`,
+      jsonPost(requestBody(req), req.signal),
+    )
+    const data: GeminiResponse = await resp.json()
+    return {
+      text: textOf(data),
+      finishReason: finishReasonOf(data),
+      usage: {
+        inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+      },
+    }
+  },
+
+  async *stream(req) {
+    const resp = await geminiFetch(
+      req.apiKey,
+      `/models/${encodeURIComponent(req.model)}:streamGenerateContent?alt=sse`,
+      jsonPost(requestBody(req), req.signal),
+    )
+    if (!resp.body) throw new LLMError('Streaming is not supported in this browser.')
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      buffer += done ? decoder.decode() + '\n\n' : decoder.decode(value, { stream: true })
+      const { events, rest } = takeSSEEvents(buffer)
+      buffer = rest
+      for (const event of events) {
+        const chunk: GeminiResponse = JSON.parse(event)
+        if (finishReasonOf(chunk) === 'blocked') {
+          throw new LLMError('The model declined to answer (safety filter).')
+        }
+        const text = textOf(chunk)
+        if (text) yield text
+      }
+      if (done) break
+    }
   },
 }

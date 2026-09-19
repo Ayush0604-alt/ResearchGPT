@@ -8,3 +8,4 @@ export function getProvider(id: ProviderId): LLMProvider {
 }
 
 export * from './types'
+export { estimateTokens, generateJSON } from './generate'
