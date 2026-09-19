@@ -1,4 +1,4 @@
-import axios, { type AxiosError } from 'axios'
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { useAuthStore } from '../store/authStore'
 import type {
   AnalysisIn,
@@ -12,30 +12,53 @@ import type {
   PaperSummary,
   Project,
   ProjectList,
-  TokenResponse,
   User,
 } from './types'
 
 const api = axios.create({
   baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    // Required by the API's CSRF check on state-changing requests.
+    'X-Requested-With': 'XMLHttpRequest',
+  },
 })
 
-// Attach JWT on every request
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+// Sessions are httpOnly cookies. When the short-lived access cookie expires,
+// renew it once with the refresh cookie and retry; concurrent 401s share one
+// refresh. If that fails the session is over: sign out.
+let refreshing: Promise<void> | null = null
 
-// Auto-logout on 401
+function refreshSession(): Promise<void> {
+  refreshing ??= api
+    .post<User>('/auth/refresh')
+    .then((res) => useAuthStore.getState().setUser(res.data))
+    .finally(() => {
+      refreshing = null
+    })
+  return refreshing
+}
+
+const NO_REFRESH = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout']
+
 api.interceptors.response.use(
   (res) => res,
-  (err: AxiosError) => {
-    if (err.response?.status === 401) {
-      useAuthStore.getState().logout()
-      window.location.href = '/login'
+  async (err: AxiosError) => {
+    const config = err.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined
+    if (err.response?.status !== 401 || !config || NO_REFRESH.includes(config.url ?? '')) {
+      return Promise.reject(err)
     }
+    if (!config._retried) {
+      config._retried = true
+      try {
+        await refreshSession()
+        return api(config)
+      } catch {
+        /* fall through to sign-out */
+      }
+    }
+    useAuthStore.getState().logout()
+    window.location.href = '/login'
     return Promise.reject(err)
   },
 )
@@ -44,8 +67,9 @@ api.interceptors.response.use(
 export const authAPI = {
   register: (data: { email: string; username: string; password: string }) =>
     api.post<User>('/auth/register', data),
-  login: (data: { email: string; password: string }) =>
-    api.post<TokenResponse>('/auth/login', data),
+  /** Sets the session cookies; returns the user. */
+  login: (data: { email: string; password: string }) => api.post<User>('/auth/login', data),
+  logout: () => api.post('/auth/logout'),
   me: () => api.get<User>('/auth/me'),
 }
 

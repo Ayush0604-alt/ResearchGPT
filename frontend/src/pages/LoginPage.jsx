@@ -8,7 +8,7 @@ import { useAuthStore } from '../store/authStore'
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
-  const { setAuth } = useAuthStore()
+  const { setUser } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -16,7 +16,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const { data } = await authAPI.login(form)
-      setAuth(data.access_token, { id: data.user_id, username: data.username, email: form.email })
+      setUser(data)
       navigate('/dashboard')
     } catch (err) {
       toast.error(errorMessage(err, 'Invalid email or password'))

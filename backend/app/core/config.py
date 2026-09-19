@@ -41,7 +41,10 @@ class Settings(BaseSettings):
     # ── Security ───────────────────────────────────────────────────────────────
     # The default only works when APP_ENV=development (see _require_strong_secret).
     SECRET_KEY: str = _DEV_SECRET_KEY
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Session cookies only over HTTPS. Required outside development.
+    COOKIE_SECURE: bool = True
     BCRYPT_ROUNDS: int = Field(default=12, ge=4, le=16)  # tests use 4 for speed
     ALGORITHM: str = "HS256"
 
@@ -96,6 +99,8 @@ class Settings(BaseSettings):
         """Outside development, refuse to start with a guessable JWT secret."""
         if self.APP_ENV == "development":
             return self
+        if not self.COOKIE_SECURE:
+            raise ValueError(f"COOKIE_SECURE must be true (APP_ENV={self.APP_ENV}).")
         if len(self.SECRET_KEY) < 32 or self.SECRET_KEY in _PLACEHOLDER_SECRETS:
             raise ValueError(
                 f"SECRET_KEY is missing, too short or a placeholder (APP_ENV={self.APP_ENV}). "

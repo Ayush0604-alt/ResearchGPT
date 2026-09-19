@@ -1,12 +1,18 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { authAPI } from '../../services/api'
 import { LayoutDashboard, Plus, LogOut, FlaskConical, KeyRound } from 'lucide-react'
 
 export default function AppLayout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await authAPI.logout() // revokes the session and clears the cookies
+    } catch {
+      /* signing out locally is enough if the server is unreachable */
+    }
     logout()
     navigate('/login')
   }

@@ -1,13 +1,16 @@
 """
-Password hashing (bcrypt via pwdlib) and JWT helpers (PyJWT).
+Password hashing (bcrypt via pwdlib), access tokens (PyJWT) and request auth.
+
+Browsers authenticate with an httpOnly cookie holding a short-lived access
+token (see app/services/session_service.py). API clients may send the same
+token as `Authorization: Bearer …`; the header wins when both are present.
 """
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, Request, status
 from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlalchemy import select
@@ -17,10 +20,10 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.models import User
 
+ACCESS_COOKIE = "rg_access"
+
 # Verifies the $2b$ hashes written by the previous passlib setup.
 password_hash = PasswordHash((BcryptHasher(rounds=settings.BCRYPT_ROUNDS),))
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
 
 _BCRYPT_MAX_BYTES = 72
 
@@ -45,33 +48,40 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def _unauthorized(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from None
+        raise _unauthorized("Invalid or expired token") from None
 
 
-async def get_current_user_id(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> int:
+def _token_from(request: Request) -> Optional[str]:
+    scheme, _, credentials = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer" and credentials:
+        return credentials
+    return request.cookies.get(ACCESS_COOKIE)
+
+
+async def get_current_user_id(request: Request, db: AsyncSession = Depends(get_db)) -> int:
+    token = _token_from(request)
+    if not token:
+        raise _unauthorized("Not authenticated")
     payload = decode_token(token)
     sub: Optional[str] = payload.get("sub")
     if sub is None or not str(sub).isdigit():
-        raise HTTPException(status_code=401, detail="Invalid token payload")
+        raise _unauthorized("Invalid token payload")
     user_id = int(sub)
 
     # Tokens outlive account changes: re-check that the user still exists and is active.
     is_active = await db.scalar(select(User.is_active).where(User.id == user_id))
     if not is_active:
-        raise HTTPException(
-            status_code=401,
-            detail="Account not found or inactive",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized("Account not found or inactive")
     return user_id

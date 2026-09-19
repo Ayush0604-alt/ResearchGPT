@@ -33,6 +33,7 @@ os.environ.update(
         "DEBUG": "false",
         "BCRYPT_ROUNDS": "4",  # cheap hashes; production uses 12
         "RATE_LIMIT_ENABLED": "false",  # tests register many users; see test_limits.py
+        "COOKIE_SECURE": "false",  # the test client talks plain http
     }
 )
 
@@ -82,7 +83,12 @@ async def _clean_db():
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test/api") as c:
+    # X-Requested-With: the CSRF check needs it on every state-changing call.
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test/api",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    ) as c:
         yield c
 
 
@@ -107,7 +113,10 @@ def make_user(client):
             "/auth/login", json={"email": data["email"], "password": data["password"]}
         )
         assert login.status_code == 200, login.text
-        token = login.json()["access_token"]
+        # Each test user sends its own token explicitly, so several users can
+        # share one client; drop the cookies login set on the client.
+        token = login.cookies["rg_access"]
+        client.cookies.clear()
         return {
             **data,
             "id": resp.json()["id"],

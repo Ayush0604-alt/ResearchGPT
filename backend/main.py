@@ -6,9 +6,10 @@ The schema is managed by Alembic only (no create_all).
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from loguru import logger
 from slowapi.errors import RateLimitExceeded
 
@@ -59,6 +60,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def require_csrf_header(request: Request, call_next):
+    """Cookie sessions + CSRF: state-changing API calls must carry
+    X-Requested-With. Browsers only send custom headers cross-site after a CORS
+    preflight, which our CORS_ORIGINS don't grant to other sites."""
+    if (
+        request.method in UNSAFE_METHODS
+        and request.url.path.startswith(settings.API_V1_PREFIX)
+        and not request.headers.get("x-requested-with")
+    ):
+        return JSONResponse({"detail": "Missing X-Requested-With header"}, status_code=403)
+    return await call_next(request)
+
 
 PREFIX = settings.API_V1_PREFIX
 app.include_router(auth.router, prefix=f"{PREFIX}/auth", tags=["Auth"])

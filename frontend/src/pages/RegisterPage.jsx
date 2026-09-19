@@ -8,7 +8,7 @@ import { useAuthStore } from '../store/authStore'
 export default function RegisterPage() {
   const [form, setForm] = useState({ email: '', username: '', password: '' })
   const [loading, setLoading] = useState(false)
-  const { setAuth } = useAuthStore()
+  const { setUser } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -20,7 +20,7 @@ export default function RegisterPage() {
     try {
       await authAPI.register(form)
       const { data } = await authAPI.login({ email: form.email, password: form.password })
-      setAuth(data.access_token, { id: data.user_id, username: data.username, email: form.email })
+      setUser(data)
       navigate('/settings?welcome=1')
     } catch (err) {
       toast.error(errorMessage(err, 'Registration failed'))

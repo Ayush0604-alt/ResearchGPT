@@ -40,13 +40,6 @@ class UserLogin(BaseModel):
     password: str = Field(max_length=128)  # no minimum: existing accounts may predate it
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user_id: int
-    username: str
-
-
 class UserOut(BaseModel):
     id: int
     email: str

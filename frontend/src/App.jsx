@@ -15,8 +15,8 @@ import SettingsPage from './pages/SettingsPage'
 import AppLayout from './components/layout/AppLayout'
 
 function ProtectedRoute({ children }) {
-  const token = useAuthStore((s) => s.token)
-  return token ? children : <Navigate to="/login" replace />
+  const user = useAuthStore((s) => s.user)
+  return user ? children : <Navigate to="/login" replace />
 }
 
 export default function App() {

@@ -80,3 +80,37 @@ test('deleting a project removes it from the dashboard', async ({ page }) => {
   await expect(page.getByText('Project deleted')).toBeVisible()
   await expect(page.getByText('No projects yet').first()).toBeVisible()
 })
+
+test('sessions use httpOnly cookies, renew silently, and end on sign-out', async ({
+  page,
+  context,
+}) => {
+  await register(page)
+
+  const cookies = await context.cookies()
+  const access = cookies.find((c) => c.name === 'rg_access')
+  const refresh = cookies.find((c) => c.name === 'rg_refresh')
+  expect(access?.httpOnly && refresh?.httpOnly).toBe(true)
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }))
+  expect(stored).not.toContain(access!.value)
+  expect(stored).not.toContain('access_token')
+
+  // The access cookie expires every 15 minutes; the refresh cookie renews it.
+  await context.clearCookies({ name: 'rg_access' })
+  await page.goto('/dashboard')
+  await expect(page.getByText('No projects yet').first()).toBeVisible()
+  expect((await context.cookies()).some((c) => c.name === 'rg_access')).toBe(true)
+
+  // Signing out revokes the session: the old refresh cookie is useless.
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  await context.addCookies([{ ...refresh!, value: refresh!.value }])
+  const status = await page.evaluate(async () => {
+    const r = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+    return r.status
+  })
+  expect(status).toBe(401)
+})

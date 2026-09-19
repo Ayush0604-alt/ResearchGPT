@@ -10,13 +10,6 @@ export interface User {
   email: string
 }
 
-export interface TokenResponse {
-  access_token: string
-  token_type: string
-  user_id: number
-  username: string
-}
-
 export interface Project {
   id: number
   user_id: number

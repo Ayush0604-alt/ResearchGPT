@@ -32,6 +32,7 @@ os.environ.update(
         "SECRET_KEY": "e2e-secret-key-that-is-at-least-32-characters",
         "BCRYPT_ROUNDS": "4",
         "RATE_LIMIT_ENABLED": "false",
+        "COOKIE_SECURE": "false",  # the e2e site is plain http
     }
 )
 sys.path.insert(0, BACKEND_DIR)

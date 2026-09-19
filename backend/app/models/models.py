@@ -213,3 +213,26 @@ class ChatMessage(Base):
     project: Mapped["ResearchProject"] = relationship(
         "ResearchProject", back_populates="chat_messages"
     )
+
+
+# ── Refresh tokens ────────────────────────────────────────────────────────────
+
+
+class RefreshToken(Base):
+    """A long-lived login session. Only a SHA-256 hash of the token is stored.
+
+    Rotated on every use: the old row is revoked and points at its successor.
+    Presenting a revoked token means it was stolen or replayed, so every session
+    of that user is revoked.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())

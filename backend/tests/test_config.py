@@ -7,7 +7,8 @@ STRONG = "a" * 64
 
 
 def _settings(**kwargs):
-    return Settings(_env_file=None, **kwargs)
+    # Production-like defaults; tests override one thing at a time.
+    return Settings(_env_file=None, **({"COOKIE_SECURE": True} | kwargs))
 
 
 @pytest.mark.parametrize(
@@ -43,3 +44,8 @@ def test_production_refuses_server_llm_keys(monkeypatch, var):
 def test_development_tolerates_a_leftover_llm_key(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-old")
     assert _settings(APP_ENV="development").APP_ENV == "development"
+
+
+def test_production_requires_secure_cookies():
+    with pytest.raises(ValidationError, match="COOKIE_SECURE"):
+        _settings(APP_ENV="production", SECRET_KEY=STRONG, COOKIE_SECURE=False)
