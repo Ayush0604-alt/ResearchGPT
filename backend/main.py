@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.routes import agents, auth, chat, papers, projects, reviews
+from app.api.routes.agents import fail_interrupted_runs
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.session import engine
@@ -25,13 +26,14 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Startup: ensure all storage directories exist.
+    Startup: ensure storage directories exist; fail runs cut off by a restart.
     Shutdown: dispose async engine connection pool.
     """
     os.makedirs(settings.PDF_STORAGE_DIR, exist_ok=True)
     os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
     os.makedirs("./storage/presentations", exist_ok=True)
     os.makedirs("./logs", exist_ok=True)
+    await fail_interrupted_runs()
     yield
     await engine.dispose()
 

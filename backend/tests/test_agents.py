@@ -1,7 +1,10 @@
 import pytest
 
 from app.api.routes import agents as agents_route
+from app.api.routes.agents import fail_interrupted_runs
 from app.core.task_store import _task_store
+from app.db.session import AsyncSessionLocal
+from app.models.models import ResearchProject
 
 
 @pytest.fixture
@@ -50,3 +53,49 @@ async def test_status_hidden_from_other_users(client, make_user, make_project, f
 
     review = await client.get(f"/reviews/{pid}", headers=alice["headers"])
     assert review.json()["introduction"] == "intro"
+
+
+async def _set_status(pid, status, task_id=None):
+    async with AsyncSessionLocal() as db:
+        project = await db.get(ResearchProject, pid)
+        project.status = status
+        project.task_id = task_id
+        await db.commit()
+
+
+async def test_restart_fails_interrupted_runs(client, make_user, make_project):
+    alice = await make_user()
+    running = await make_project(alice)
+    done = await make_project(alice)
+    await _set_status(running, "running", "task_gone")
+    await _set_status(done, "completed")
+
+    assert await fail_interrupted_runs() == 1
+
+    h = alice["headers"]
+    assert (await client.get(f"/projects/{running}", headers=h)).json()["status"] == "failed"
+    assert (await client.get(f"/projects/{done}", headers=h)).json()["status"] == "completed"
+
+
+async def test_stale_running_project_can_be_rerun(client, make_user, make_project, fake_workflow):
+    alice = await make_user()
+    pid = await make_project(alice)
+    await _set_status(pid, "running", "task_lost_in_restart")  # not in _task_store
+
+    run = await client.post("/agents/run", json={"project_id": pid}, headers=alice["headers"])
+
+    assert run.json()["task_id"] != "task_lost_in_restart"
+    assert fake_workflow == [pid]
+
+
+async def test_live_run_blocks_second_run(client, make_user, make_project, fake_workflow):
+    alice = await make_user()
+    pid = await make_project(alice)
+    await _set_status(pid, "running", "task_live")
+    _task_store["task_live"] = {"user_id": alice["id"], "status": "running", "progress": 40}
+
+    run = await client.post("/agents/run", json={"project_id": pid}, headers=alice["headers"])
+
+    assert run.json()["current_agent"] == "Already running"
+    assert run.json()["progress"] == 40
+    assert fake_workflow == []

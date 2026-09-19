@@ -14,7 +14,7 @@ import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.workflow import run_research_workflow
@@ -36,6 +36,24 @@ from app.schemas.schemas import AgentRunRequest, AgentStatusResponse
 router = APIRouter()
 
 
+async def fail_interrupted_runs() -> int:
+    """Mark projects left RUNNING by a previous process as FAILED.
+
+    Task progress lives in this process's memory, so after a restart no run can
+    still be alive. Call once at startup (single-process deployments only).
+    """
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            update(ResearchProject)
+            .where(ResearchProject.status == ProjectStatus.RUNNING.value)
+            .values(status=ProjectStatus.FAILED.value)
+        )
+        await db.commit()
+    if result.rowcount:
+        logger.warning(f"[Startup] Marked {result.rowcount} interrupted run(s) as failed")
+    return result.rowcount
+
+
 @router.post("/run", response_model=AgentStatusResponse)
 async def run_agents(
     body: AgentRunRequest,
@@ -45,10 +63,12 @@ async def run_agents(
 ):
     project = await load_owned_project(db, body.project_id, user_id)
 
-    # Only block if CURRENTLY running — allow re-runs of failed/completed projects
-    if project.status == ProjectStatus.RUNNING.value:
-        task_id = project.task_id or ""
-        progress = _task_store.get(task_id, {}).get("progress", 0)
+    # Only block if CURRENTLY running — allow re-runs of failed/completed projects.
+    # A RUNNING project whose task isn't in memory is stale (the process restarted).
+    task = _task_store.get(project.task_id or "")
+    if project.status == ProjectStatus.RUNNING.value and task is not None:
+        task_id = project.task_id
+        progress = task.get("progress", 0)
         return AgentStatusResponse(
             task_id=task_id,
             status="running",

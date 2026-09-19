@@ -116,8 +116,16 @@ export default function ProjectPage() {
           setProject((p) => ({ ...p, status: 'failed' }))
           toast.error('Pipeline failed: ' + (data.error || 'Unknown error'))
         }
-      } catch {
-        /* swallow polling errors */
+      } catch (err) {
+        // 404: the task is gone (e.g. the server restarted mid-run). Stop polling
+        // instead of spinning forever. Other errors are transient; keep polling.
+        if (err.response?.status === 404) {
+          clearInterval(pollRef.current)
+          setStarting(false)
+          setTaskStatus(null)
+          setProject((p) => ({ ...p, status: 'failed' }))
+          toast.error('This run was interrupted. Please run the pipeline again.')
+        }
       }
     }, 2500)
   }
