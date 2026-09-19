@@ -19,6 +19,8 @@ async def test_chat_returns_answer_and_citations_key(client, make_user, make_pro
     body = (await _ask(client, user, pid)).json()
 
     assert body == {"answer": "They use transformers.", "citations": []}
+    history = (await client.get(f"/chat/history/{pid}", headers=user["headers"])).json()
+    assert [m["role"] for m in history["messages"]] == ["user", "assistant"]
 
 
 async def test_chat_hides_internal_errors(client, make_user, make_project, monkeypatch):
@@ -29,10 +31,14 @@ async def test_chat_hides_internal_errors(client, make_user, make_project, monke
     user = await make_user()
     pid = await make_project(user)
 
-    answer = (await _ask(client, user, pid)).json()["answer"]
+    resp = await _ask(client, user, pid)
 
-    assert "10.0.0.5" not in answer and "AIza" not in answer
-    assert "try again" in answer
+    assert resp.status_code == 502
+    assert "10.0.0.5" not in resp.text and "AIza" not in resp.text
+    assert "try again" in resp.json()["detail"]
+    # A failed exchange is not stored.
+    history = (await client.get(f"/chat/history/{pid}", headers=user["headers"])).json()
+    assert history["total"] == 0
 
 
 async def test_chat_explains_rate_limits(client, make_user, make_project, monkeypatch):
@@ -43,4 +49,7 @@ async def test_chat_explains_rate_limits(client, make_user, make_project, monkey
     user = await make_user()
     pid = await make_project(user)
 
-    assert "rate limit" in (await _ask(client, user, pid)).json()["answer"]
+    resp = await _ask(client, user, pid)
+
+    assert resp.status_code == 429
+    assert "rate limit" in resp.json()["detail"]

@@ -1,7 +1,5 @@
 """
 Projects Routes: /api/projects
-
-Fix: delete route was missing await db.commit() — same bug as chat.py.
 """
 
 from fastapi import APIRouter, Depends
@@ -61,4 +59,3 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
 ):
     await db.delete(project)
-    await db.commit()  # FIX: explicit commit required for 204 responses

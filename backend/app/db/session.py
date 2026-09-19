@@ -39,6 +39,13 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Request-scoped session that owns the transaction.
+
+    Routes only add/flush; the commit happens here once the handler returns,
+    and FastAPI (>=0.106) runs this before the response is sent, so a failed
+    commit becomes a 500 instead of a silently lost write. Background jobs open
+    their own AsyncSessionLocal() and commit themselves.
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session

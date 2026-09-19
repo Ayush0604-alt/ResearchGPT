@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Send, Loader2, ArrowLeft, Trash2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { chatAPI } from '../services/api'
+import { chatAPI, errorMessage } from '../services/api'
 import Markdown from '../components/Markdown'
 
 const SUGGESTIONS = [
@@ -64,8 +64,8 @@ export default function ChatPage() {
           created_at: new Date().toISOString(),
         },
       ])
-    } catch {
-      toast.error('Query failed — please try again')
+    } catch (err) {
+      toast.error(errorMessage(err, 'Query failed — please try again'))
       setMessages((m) => m.filter((x) => x.id !== userMsg.id))
       setInput(q)
     } finally {

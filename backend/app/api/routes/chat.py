@@ -1,12 +1,8 @@
 """
 Chat Routes: /api/chat
-
-Fix: delete route was missing `await db.commit()` — deletions were being
-     rolled back by the session context manager's exception handler path,
-     so clearing chat history appeared to work but messages reappeared on reload.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
@@ -46,15 +42,7 @@ async def clear_chat_history(
     project: ResearchProject = Depends(get_owned_project),
     db: AsyncSession = Depends(get_db),
 ):
-    # FIX: use bulk DELETE instead of load-then-delete, and ensure commit runs.
-    # The original code fetched all rows then called db.delete() per row but
-    # never committed — get_db() only commits on the yield path when no
-    # exception is raised, but 204 responses have no body so some ASGI paths
-    # skipped the commit.
     await db.execute(delete(ChatMessage).where(ChatMessage.project_id == project.id))
-    # Explicit commit ensures the bulk delete is persisted regardless of
-    # how the response is finalized.
-    await db.commit()
 
 
 @router.post("/query")
@@ -64,11 +52,6 @@ async def chat_query(
     user_id: int = Depends(get_current_user_id),
 ):
     await load_owned_project(db, body.project_id, user_id)
-
-    # Save user message
-    user_msg = ChatMessage(project_id=body.project_id, role="user", content=body.question)
-    db.add(user_msg)
-    await db.commit()
 
     # Fetch papers for context
     result = await db.execute(select(Paper).where(Paper.project_id == body.project_id))
@@ -85,16 +68,19 @@ Context Papers:
 
 Question: {body.question}"""
 
+    # On failure nothing is stored: a question without an answer isn't history.
     try:
         answer = await ask_gemini(prompt, max_tokens=2048)
     except RateLimitError:
-        answer = "Sorry, the Gemini API rate limit was reached. Please wait a minute and ask again."
+        raise HTTPException(
+            429, "The Gemini API rate limit was reached. Wait a minute and ask again."
+        ) from None
     except Exception:
         logger.exception(f"[Chat] Gemini call failed for project {body.project_id}")
-        answer = "Sorry, something went wrong while answering. Please try again."
+        raise HTTPException(502, "Couldn't get an answer right now. Please try again.") from None
 
-    assistant_msg = ChatMessage(project_id=body.project_id, role="assistant", content=answer)
-    db.add(assistant_msg)
-    await db.commit()
+    # Both messages are committed together by get_db.
+    db.add(ChatMessage(project_id=body.project_id, role="user", content=body.question))
+    db.add(ChatMessage(project_id=body.project_id, role="assistant", content=answer))
 
     return {"answer": answer, "citations": []}
