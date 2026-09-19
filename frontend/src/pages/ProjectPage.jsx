@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
 import {
   Play,
@@ -14,7 +15,14 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { projectsAPI, agentsAPI, papersAPI, errorMessage } from '../services/api'
+import { errorMessage, httpStatus } from '../services/api'
+import {
+  invalidateProjectResults,
+  usePapers,
+  useProject,
+  useRunPipeline,
+  useTaskStatus,
+} from '../services/queries'
 
 // Must match the current_agent names reported by backend/app/agents/workflow.py
 const STEPS = ['Paper Search', 'Paper Collection', 'Comprehensive Analysis']
@@ -37,99 +45,43 @@ function parseAuthors(raw) {
 
 export default function ProjectPage() {
   const { id } = useParams()
-  const [project, setProject] = useState(null)
-  const [papers, setPapers] = useState([])
-  const [taskStatus, setTaskStatus] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [starting, setStarting] = useState(false)
+  const qc = useQueryClient()
   const [expanded, setExpanded] = useState({})
-  const pollRef = useRef(null)
+  const { data: project, isPending: loading } = useProject(id)
+  const { data: papers = [] } = usePapers(id)
+  const runPipeline = useRunPipeline(id)
+  const starting = runPipeline.isPending
 
-  const load = async () => {
-    try {
-      const pjRes = await projectsAPI.get(id)
-      setProject(pjRes.data)
+  // Poll the task only while the project says a run is in progress.
+  const taskId = project?.status === 'running' ? project.task_id : null
+  const { data: taskStatus, error: taskError } = useTaskStatus(taskId)
+  // 404 means the task is gone (e.g. the server restarted mid-run).
+  const taskState = httpStatus(taskError) === 404 ? 'gone' : taskStatus?.status
 
-      // FIX: papersAPI.list returns the papers array directly as data
-      // (FastAPI List[PaperOut] response), so we handle both array and object shapes.
-      try {
-        const papRes = await papersAPI.list(id)
-        const papersData = Array.isArray(papRes.data) ? papRes.data : papRes.data || []
-        setPapers(papersData)
-      } catch {
-        setPapers([])
-      }
+  // When a run ends, tell the user once and refresh everything it changed.
+  const announced = useRef(null)
+  useEffect(() => {
+    if (!taskId || !['completed', 'failed', 'gone'].includes(taskState)) return
+    const key = `${taskId}:${taskState}`
+    if (announced.current === key) return
+    announced.current = key
+    if (taskState === 'completed') toast.success('Pipeline completed!')
+    else if (taskState === 'failed') toast.error('Pipeline failed')
+    else toast.error('This run was interrupted. Please run the pipeline again.')
+    invalidateProjectResults(qc, id)
+  }, [taskId, taskState, qc, id])
 
-      if (pjRes.data.task_id && pjRes.data.status === 'running') {
-        poll(pjRes.data.task_id)
-      }
-    } catch {
-      toast.error('Failed to load project')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const startPipeline = async () => {
+  const startPipeline = () => {
     if (
       project.status === 'completed' &&
       !confirm('Run the pipeline again? This replaces the current papers and review.')
     )
       return
-    setStarting(true)
-    try {
-      const { data } = await agentsAPI.run({ project_id: parseInt(id), max_papers: 10 })
-      setProject((p) => ({ ...p, status: 'running', task_id: data.task_id, error: null }))
-      setTaskStatus(data)
-      poll(data.task_id)
-      toast.success('Pipeline started!')
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to start pipeline'))
-      setStarting(false)
-    }
+    runPipeline.mutate(undefined, {
+      onSuccess: () => toast.success('Pipeline started!'),
+      onError: (err) => toast.error(errorMessage(err, 'Failed to start pipeline')),
+    })
   }
-
-  const poll = (tid) => {
-    clearInterval(pollRef.current)
-    pollRef.current = setInterval(async () => {
-      try {
-        const { data } = await agentsAPI.status(tid)
-        setTaskStatus(data)
-        if (data.status === 'completed') {
-          clearInterval(pollRef.current)
-          setStarting(false)
-          setProject((p) => ({ ...p, status: 'completed' }))
-          try {
-            const { data: papData } = await papersAPI.list(id)
-            setPapers(Array.isArray(papData) ? papData : papData || [])
-          } catch {
-            /* non-critical */
-          }
-          toast.success('Pipeline completed!')
-        } else if (data.status === 'failed') {
-          clearInterval(pollRef.current)
-          setStarting(false)
-          setProject((p) => ({ ...p, status: 'failed', error: data.error }))
-          toast.error('Pipeline failed')
-        }
-      } catch (err) {
-        // 404: the task is gone (e.g. the server restarted mid-run). Stop polling
-        // instead of spinning forever. Other errors are transient; keep polling.
-        if (err.response?.status === 404) {
-          clearInterval(pollRef.current)
-          setStarting(false)
-          setTaskStatus(null)
-          setProject((p) => ({ ...p, status: 'failed' }))
-          toast.error('This run was interrupted. Please run the pipeline again.')
-        }
-      }
-    }, 2500)
-  }
-
-  useEffect(() => {
-    load()
-    return () => clearInterval(pollRef.current)
-  }, [id])
 
   if (loading)
     return (

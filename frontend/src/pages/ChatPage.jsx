@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Send, Loader2, ArrowLeft, Trash2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { chatAPI, errorMessage } from '../services/api'
+import { errorMessage } from '../services/api'
+import { useAskQuestion, useChatHistory, useClearChat } from '../services/queries'
 import Markdown from '../components/Markdown'
 
 const SUGGESTIONS = [
@@ -15,73 +16,48 @@ const SUGGESTIONS = [
 
 export default function ChatPage() {
   const { id } = useParams()
-  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [fetching, setFetching] = useState(true)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const { data: history = [], isPending: fetching } = useChatHistory(id)
+  const ask = useAskQuestion(id)
+  const clear = useClearChat(id)
+  const loading = ask.isPending
 
-  const loadHistory = async () => {
-    try {
-      const { data } = await chatAPI.history(id)
-      setMessages(data.messages || [])
-    } catch {
-      /* empty is fine */
-    } finally {
-      setFetching(false)
-    }
-  }
+  // Show the question right away; the mutation stays pending until the
+  // refreshed history (which contains it) has loaded.
+  const messages = ask.isPending
+    ? [
+        ...history,
+        {
+          id: 'pending',
+          role: 'user',
+          content: ask.variables,
+          created_at: new Date(ask.submittedAt).toISOString(),
+        },
+      ]
+    : history
 
-  useEffect(() => {
-    loadHistory()
-  }, [id])
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages.length])
 
-  const send = async () => {
+  const send = () => {
     const q = input.trim()
     if (!q || loading) return
     setInput('')
-    const userMsg = {
-      id: Date.now(),
-      role: 'user',
-      content: q,
-      created_at: new Date().toISOString(),
-    }
-    setMessages((m) => [...m, userMsg])
-    setLoading(true)
-    try {
-      const { data } = await chatAPI.query({ project_id: parseInt(id), question: q })
-      setMessages((m) => [
-        ...m,
-        {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: data.answer,
-          citations: { sources: data.citations },
-          created_at: new Date().toISOString(),
-        },
-      ])
-    } catch (err) {
-      toast.error(errorMessage(err, 'Query failed — please try again'))
-      setMessages((m) => m.filter((x) => x.id !== userMsg.id))
-      setInput(q)
-    } finally {
-      setLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
+    ask.mutate(q, {
+      onError: (err) => {
+        toast.error(errorMessage(err, 'Query failed — please try again'))
+        setInput(q)
+      },
+      onSettled: () => setTimeout(() => inputRef.current?.focus(), 50),
+    })
   }
 
-  const clearChat = async () => {
+  const clearChat = () => {
     if (!confirm('Clear all messages?')) return
-    try {
-      await chatAPI.clear(id)
-      setMessages([])
-    } catch {
-      toast.error('Failed to clear chat')
-    }
+    clear.mutate(undefined, { onError: () => toast.error('Failed to clear chat') })
   }
 
   const onKeyDown = (e) => {

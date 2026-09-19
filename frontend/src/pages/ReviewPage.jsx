@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Download, Loader2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { reviewsAPI } from '../services/api'
+import { errorMessage, reviewsAPI } from '../services/api'
+import { useReview } from '../services/queries'
 import Markdown from '../components/Markdown'
 
 const TABS = [
@@ -17,28 +18,12 @@ const TABS = [
 
 export default function ReviewPage() {
   const { id } = useParams()
-  const [review, setReview] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('introduction')
-
-  const fetchReview = async () => {
-    try {
-      const { data } = await reviewsAPI.get(id)
-      setReview(data)
-    } catch (err) {
-      if (err.response?.status !== 404) toast.error('Failed to load review')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchReview()
-  }, [id])
+  // `review` is null when the project has no review yet.
+  const { data: review, isPending: loading, isError, error, refetch } = useReview(id)
 
   const download = async () => {
     try {
-      // FIX: api.js now sets responseType: 'text' for this endpoint
       const { data } = await reviewsAPI.markdown(id)
       const blob = new Blob([data], { type: 'text/markdown' })
       const url = URL.createObjectURL(blob)
@@ -60,6 +45,18 @@ export default function ReviewPage() {
     return (
       <div className="flex items-center justify-center h-48">
         <Loader2 className="animate-spin text-brand-500" size={22} />
+      </div>
+    )
+
+  if (isError)
+    return (
+      <div className="card-p text-center py-12">
+        <p className="text-sm text-gray-600 mb-3">
+          {errorMessage(error, 'Failed to load the review')}
+        </p>
+        <button onClick={() => refetch()} className="btn-secondary btn-sm">
+          Try again
+        </button>
       </div>
     )
 

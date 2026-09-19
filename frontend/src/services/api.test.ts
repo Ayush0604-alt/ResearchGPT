@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { errorMessage } from './api'
 
-const axiosError = (detail) => ({ response: { data: { detail } } })
+const axiosError = (detail: unknown) => ({ response: { data: { detail } } })
 
 describe('errorMessage', () => {
   it('passes through string details', () => {

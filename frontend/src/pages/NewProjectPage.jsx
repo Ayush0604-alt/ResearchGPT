@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { projectsAPI, errorMessage } from '../services/api'
+import { errorMessage } from '../services/api'
+import { useCreateProject } from '../services/queries'
 
 const EXAMPLES = [
   'AI in Healthcare Diagnostics',
@@ -17,23 +18,27 @@ const EXAMPLES = [
 
 export default function NewProjectPage() {
   const [form, setForm] = useState({ topic: '', title: '', description: '' })
-  const [loading, setLoading] = useState(false)
+  const createProject = useCreateProject()
+  const loading = createProject.isPending
   const navigate = useNavigate()
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault()
     const topic = form.topic.trim()
     if (!topic) return toast.error('Research topic is required')
-    setLoading(true)
-    try {
-      const { data } = await projectsAPI.create({ ...form, topic })
-      toast.success('Project created')
-      navigate(`/project/${data.id}`)
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to create project'))
-    } finally {
-      setLoading(false)
-    }
+    // Send optional fields only when filled in.
+    const title = form.title.trim() || undefined
+    const description = form.description.trim() || undefined
+    createProject.mutate(
+      { topic, title, description },
+      {
+        onSuccess: (project) => {
+          toast.success('Project created')
+          navigate(`/project/${project.id}`)
+        },
+        onError: (err) => toast.error(errorMessage(err, 'Failed to create project')),
+      },
+    )
   }
 
   return (

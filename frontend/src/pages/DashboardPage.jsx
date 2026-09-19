@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Loader2, Trash2, FileSearch } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { projectsAPI } from '../services/api'
+import { errorMessage } from '../services/api'
+import { useDeleteProject, useProjects } from '../services/queries'
 
 const STATUS = {
   pending: { label: 'Pending', cls: 'badge-amber', dot: 'bg-amber-400' },
@@ -12,38 +12,33 @@ const STATUS = {
 }
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { data: projects = [], isPending, isError, error, refetch } = useProjects()
+  const deleteProject = useDeleteProject()
 
-  const fetchProjects = async () => {
-    try {
-      const { data } = await projectsAPI.list()
-      setProjects(data.projects || [])
-    } catch {
-      toast.error('Failed to load projects')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchProjects()
-  }, [])
-
-  const handleDelete = async (id, e) => {
+  const handleDelete = (id, e) => {
     e.preventDefault()
     e.stopPropagation()
     if (!confirm('Delete this project? This action cannot be undone.')) return
-    try {
-      await projectsAPI.delete(id)
-      setProjects((p) => p.filter((x) => x.id !== id))
-      toast.success('Project deleted')
-    } catch {
-      toast.error('Could not delete project')
-    }
+    deleteProject.mutate(id, {
+      onSuccess: () => toast.success('Project deleted'),
+      onError: (err) => toast.error(errorMessage(err, 'Could not delete project')),
+    })
   }
 
-  if (loading) {
+  if (isError) {
+    return (
+      <div className="card-p text-center py-12">
+        <p className="text-sm text-gray-600 mb-3">
+          {errorMessage(error, 'Failed to load projects')}
+        </p>
+        <button onClick={() => refetch()} className="btn-secondary btn-sm">
+          Try again
+        </button>
+      </div>
+    )
+  }
+
+  if (isPending) {
     return (
       <div className="flex items-center justify-center h-48">
         <Loader2 className="animate-spin text-brand-500" size={24} />
@@ -136,6 +131,7 @@ export default function DashboardPage() {
                     <td className="pr-4 py-3.5 text-right">
                       <button
                         onClick={(e) => handleDelete(project.id, e)}
+                        aria-label={`Delete project ${project.title}`}
                         className="opacity-0 group-hover:opacity-100 transition-opacity
                                    p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50"
                       >

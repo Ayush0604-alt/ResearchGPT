@@ -13,7 +13,7 @@ repos:
         name: eslint (frontend)
         entry: npm --prefix frontend run lint
         language: system
-        files: ^frontend/.*\.(js|jsx)$
+        files: ^frontend/.*\.(js|jsx|ts|tsx)$
         pass_filenames: false
       - id: frontend-format
         name: prettier (frontend)
