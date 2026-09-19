@@ -145,7 +145,7 @@ Add a GitHub Actions workflow with two jobs:
 
 ## Phase 2: Foundation for the redesign
 
-### ☐ Step 13: Schema migration `0002` · I§2 (minor items)
+### ☑ Step 13: Schema migration `0002` · I§2 (minor items)
 Use Alembic autogenerate, then review the result by hand:
 - Change every `DateTime` to `DateTime(timezone=True)`.
 - Add indexes on `papers.project_id`, `chat_messages.project_id`, `paper_summaries.paper_id` and `paper_findings.paper_id`. Add `ondelete="CASCADE"` to all child foreign keys.
@@ -155,21 +155,21 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** `alembic upgrade head` and `alembic downgrade -1` both work on a copy of your local database.
 
-### ☐ Step 14: One transaction pattern · I§2
+### ☑ Step 14: One transaction pattern · I§2
 - Rule: `get_db` owns the commit. Routes and services only `flush`.
 - Remove the explicit `commit()` calls from `chat.py` and `projects.py`.
 - Add a regression test for the original bug: `DELETE` a resource, then `GET` it again in a **new** client or session, and expect it to be gone.
 
 **Done when:** the delete tests pass without any explicit commits in the routes.
 
-### ☐ Step 15: Service layer · I§4
+### ☑ Step 15: Service layer · I§4
 - Move the persistence code out of `_run_workflow_background` into `services/research_service.py` (`replace_results(project_id, papers, review)`).
 - Move chat storage into `services/chat_service.py`.
 - Routes then only parse the request, call a service, and return the result.
 
 **Done when:** no route file contains business logic longer than about 15 lines, and the tests pass.
 
-### ☐ Step 16: Remove dead code and dependencies · I§4, I§5
+### ☑ Step 16: Remove dead code and dependencies · I§4, I§5
 - Delete:
   - the `CHROMA_*` settings and the startup `mkdir` calls for `chroma` and `presentations`
   - the `Presentation` handling in the worker
@@ -184,7 +184,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** `ruff` reports no unused imports, the app runs, and CI passes.
 
-### ☐ Step 17: Frontend foundation · D§4, I§7
+### ☑ Step 17: Frontend foundation · D§4, I§7
 - TypeScript: add `tsconfig.json` with `allowJs`. Write new files in `.ts`/`.tsx`, and convert `services/api.js` and the stores first.
 - Add **TanStack Query**. Replace the hand-written data fetching and `setInterval` polling with `useQuery`, where `refetchInterval` stops on a terminal status or a 404 and pauses while the tab is hidden.
 - Add **Vitest** + Testing Library, with a first test for the polling logic.
@@ -192,6 +192,13 @@ Use Alembic autogenerate, then review the result by hand:
 **Done when:** every page behaves as before, `npm run build`, `tsc --noEmit` and `vitest` pass, there are no `setInterval` calls in `pages/`, and `react-hooks/set-state-in-effect` is set back to `error` in `eslint.config.js`.
 
 ---
+
+> **Phase 2 notes (2026-09-19):** 78 backend, 13 unit and 6 end-to-end tests pass.
+> - Step 13 also fixed existing drift: 13 columns were NOT NULL in the models but nullable in the database. The saved `error` and `comparison` columns are used already.
+> - Step 14 confirmed the old "explicit commit for 204" workaround isn't needed on FastAPI 0.111. Chat now stores nothing when the LLM call fails.
+> - Step 16 dropped the `presentations` table (migration 0003).
+> - Step 17 surfaced a regression from Step 11 (blank optional fields returned 422), now fixed. It also added **Playwright end-to-end tests** (`npm run e2e`), which weren't in the plan, because Phase 3 moves LLM calls into the browser.
+> - **Production database:** run `alembic upgrade head` (migrations 0002 and 0003) before deploying this code.
 
 ## Phase 3: Bring your own key (the deployment goal)
 
