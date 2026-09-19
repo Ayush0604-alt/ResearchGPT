@@ -190,3 +190,17 @@ async def test_run_rate_limit_message(client, make_user, make_project, monkeypat
     status, _ = await _run_and_status(client, user, pid)
 
     assert "rate limit" in status["error"]
+
+
+async def test_rerun_replaces_results_instead_of_duplicating(
+    client, make_user, make_project, fake_workflow
+):
+    user = await make_user()
+    pid = await make_project(user)
+
+    await _run_and_status(client, user, pid)
+    status, project = await _run_and_status(client, user, pid)
+
+    assert status["status"] == "completed" and project["status"] == "completed"
+    papers = (await client.get(f"/papers/{pid}", headers=user["headers"])).json()
+    assert len(papers) == 1

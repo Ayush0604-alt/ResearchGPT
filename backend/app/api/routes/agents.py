@@ -1,21 +1,13 @@
 """
 Agents Routes: /api/agents
-Triggers the full LangGraph workflow as a background task.
-
-Fixes:
-- _task_store moved to app.core.task_store to break circular import with workflow.py
-- task_id includes timestamp so re-runs get a fresh task
-- Duplicate-run guard only blocks RUNNING status, not FAILED/COMPLETED
-- Old data deleted before re-run to avoid unique-constraint violations
+Starts the research workflow as a background task and reports its progress.
+Persistence and run bookkeeping live in app.services.research_service.
 """
 
-import json
 import time
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from loguru import logger
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.workflow import run_research_workflow
@@ -23,31 +15,11 @@ from app.api.deps import load_owned_project
 from app.core.security import get_current_user_id
 from app.core.task_store import _task_store
 from app.db.session import AsyncSessionLocal, get_db
-from app.models.models import (
-    LiteratureReview,
-    Paper,
-    PaperFindings,
-    PaperSummary,
-    Presentation,
-    ProjectStatus,
-    ResearchProject,
-)
+from app.models.models import ProjectStatus
 from app.schemas.schemas import AgentRunRequest, AgentStatusResponse
-from app.utils.gemini_client import RateLimitError
+from app.services import research_service
 
 router = APIRouter()
-
-
-class PipelineError(Exception):
-    """A run failure whose message is safe to show to the user."""
-
-
-def _user_facing_error(exc: Exception) -> str:
-    if isinstance(exc, PipelineError):
-        return str(exc)
-    if isinstance(exc, RateLimitError):
-        return "The Gemini API rate limit was reached. Wait a minute, then run again."
-    return "The pipeline failed unexpectedly. Please try again."
 
 
 async def fail_interrupted_runs() -> int:
@@ -57,19 +29,11 @@ async def fail_interrupted_runs() -> int:
     still be alive. Call once at startup (single-process deployments only).
     """
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            update(ResearchProject)
-            .where(ResearchProject.status == ProjectStatus.RUNNING.value)
-            .values(
-                status=ProjectStatus.FAILED.value,
-                error="This run was interrupted by a server restart. Please run it again.",
-                finished_at=datetime.now(timezone.utc),
-            )
-        )
+        count = await research_service.fail_interrupted_runs(db)
         await db.commit()
-    if result.rowcount:
-        logger.warning(f"[Startup] Marked {result.rowcount} interrupted run(s) as failed")
-    return result.rowcount
+    if count:
+        logger.warning(f"[Startup] Marked {count} interrupted run(s) as failed")
+    return count
 
 
 @router.post("/run", response_model=AgentStatusResponse)
@@ -102,11 +66,7 @@ async def run_agents(
         "current_agent": "Starting",
     }
 
-    project.status = ProjectStatus.RUNNING.value
-    project.task_id = task_id
-    project.error = None
-    project.started_at = datetime.now(timezone.utc)
-    project.finished_at = None
+    research_service.start_run(project, task_id)
     await db.flush()
 
     background_tasks.add_task(
@@ -152,127 +112,12 @@ async def _run_workflow_background(
             max_papers=max_papers,
             task_id=task_id,
         )
-
-        # Fail loudly instead of reporting an empty run as "completed".
-        # Raising here also keeps the previous run's results intact.
-        if not final_state.get("papers"):
-            raise PipelineError(
-                "No papers with abstracts were found for this topic. "
-                "Try a broader or differently worded topic."
-            )
-        if not final_state.get("literature_review"):
-            raise PipelineError("The analysis step returned no review. Please run again.")
+        # Raises before touching the DB, so a bad run keeps the previous results.
+        research_service.validate_results(final_state)
 
         async with AsyncSessionLocal() as db:
-            # ── Delete old data so re-runs don't hit unique-constraint violations ──
-            old_papers_result = await db.execute(
-                select(Paper).where(Paper.project_id == project_id)
-            )
-            for old_paper in old_papers_result.scalars().all():
-                await db.delete(old_paper)
-
-            old_review_result = await db.execute(
-                select(LiteratureReview).where(LiteratureReview.project_id == project_id)
-            )
-            old_review = old_review_result.scalar_one_or_none()
-            if old_review:
-                await db.delete(old_review)
-
-            old_pres_result = await db.execute(
-                select(Presentation).where(Presentation.project_id == project_id)
-            )
-            old_pres = old_pres_result.scalar_one_or_none()
-            if old_pres:
-                await db.delete(old_pres)
-
-            await db.flush()
-
-            # ── Persist papers ────────────────────────────────────────────────
-            for paper_data in final_state.get("papers", []):
-                authors_raw = paper_data.get("authors", [])
-                authors_str = (
-                    json.dumps(authors_raw) if isinstance(authors_raw, list) else str(authors_raw)
-                )
-
-                paper = Paper(
-                    project_id=project_id,
-                    title=(paper_data.get("title") or "")[:999],
-                    authors=authors_str,
-                    abstract=paper_data.get("abstract", ""),
-                    year=paper_data.get("year"),
-                    url=(paper_data.get("url") or "")[:1999],
-                    pdf_url=(paper_data.get("pdf_url") or "")[:1999],
-                    pdf_path=paper_data.get("pdf_path"),
-                    source=paper_data.get("source", ""),
-                    external_id=paper_data.get("external_id", ""),
-                    status="processed",
-                )
-                db.add(paper)
-                await db.flush()  # get paper.id
-
-                if paper_data.get("summary"):
-                    db.add(
-                        PaperSummary(
-                            paper_id=paper.id,
-                            summary=paper_data.get("summary"),
-                            methodology=paper_data.get("methodology"),
-                            conclusion=paper_data.get("conclusion"),
-                        )
-                    )
-
-                findings = paper_data.get("findings") or {}
-                if any(v for v in findings.values() if v is not None):
-                    db.add(
-                        PaperFindings(
-                            paper_id=paper.id,
-                            model_used=findings.get("model_used"),
-                            dataset_used=findings.get("dataset_used"),
-                            accuracy=findings.get("accuracy"),
-                            contributions=findings.get("contributions"),
-                            limitations=findings.get("limitations"),
-                            raw_json=findings,
-                        )
-                    )
-
-            # ── Literature review ─────────────────────────────────────────────
-            lit = final_state.get("literature_review") or {}
-            logger.info(f"[Background] literature_review keys: {list(lit.keys())}")
-            if lit:
-                db.add(
-                    LiteratureReview(
-                        project_id=project_id,
-                        introduction=lit.get("introduction"),
-                        body=lit.get("body"),
-                        discussion=lit.get("discussion"),
-                        conclusion=lit.get("conclusion"),
-                        trends=final_state.get("trends"),
-                        gaps=final_state.get("gaps"),
-                        comparison=final_state.get("comparison"),
-                    )
-                )
-
-            # ── Presentation ──────────────────────────────────────────────────
-            pres = final_state.get("presentation") or {}
-            logger.info(
-                f"[Background] presentation keys: {list(pres.keys())}, file_path={pres.get('file_path')}"
-            )
-            if pres.get("file_path"):
-                db.add(
-                    Presentation(
-                        project_id=project_id,
-                        file_path=pres["file_path"],
-                        slide_data=pres.get("slide_data"),
-                    )
-                )
-
-            # ── Mark project complete ─────────────────────────────────────────
-            proj_result = await db.execute(
-                select(ResearchProject).where(ResearchProject.id == project_id)
-            )
-            proj = proj_result.scalar_one_or_none()
-            if proj:
-                proj.status = ProjectStatus.COMPLETED.value
-                proj.finished_at = datetime.now(timezone.utc)
+            await research_service.replace_results(db, project_id, final_state)
+            await research_service.mark_completed(db, project_id)
             await db.commit()
 
         _task_store.setdefault(task_id, {}).update(
@@ -282,25 +127,13 @@ async def _run_workflow_background(
 
     except Exception as e:
         logger.exception(f"[Background] {task_id} failed: {e}")
+        message = research_service.user_facing_error(e)
         _task_store.setdefault(task_id, {}).update(
-            {
-                "status": "failed",
-                "progress": 0,
-                "current_agent": None,
-                "error": _user_facing_error(e),
-            }
+            {"status": "failed", "progress": 0, "current_agent": None, "error": message}
         )
-
         try:
             async with AsyncSessionLocal() as db:
-                res = await db.execute(
-                    select(ResearchProject).where(ResearchProject.id == project_id)
-                )
-                proj = res.scalar_one_or_none()
-                if proj:
-                    proj.status = ProjectStatus.FAILED.value
-                    proj.error = _user_facing_error(e)
-                    proj.finished_at = datetime.now(timezone.utc)
+                await research_service.mark_failed(db, project_id, message)
                 await db.commit()
         except Exception as inner_exc:
             logger.error(f"[Background] Failed to update project status: {inner_exc}")
