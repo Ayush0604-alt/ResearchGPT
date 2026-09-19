@@ -70,6 +70,7 @@ export default function NewProjectPage() {
       <div className="page-header flex items-center gap-3">
         <Link
           to="/dashboard"
+          aria-label="Back to projects"
           className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700
                                          hover:bg-gray-100 transition-colors"
         >

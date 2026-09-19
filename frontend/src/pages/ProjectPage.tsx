@@ -333,58 +333,62 @@ export default function ProjectPage() {
               const isOpen = expanded[paper.id]
               return (
                 <div key={paper.id}>
-                  <button
-                    className="w-full flex items-start justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors text-left gap-4"
-                    onClick={() => setExpanded((e) => ({ ...e, [paper.id]: !e[paper.id] }))}
-                    aria-expanded={Boolean(isOpen)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        {paper.source && (
-                          <span className="badge-gray text-xs">
-                            {SOURCE_LABELS[paper.source] || paper.source}
+                  <div className="flex items-start hover:bg-gray-50 transition-colors">
+                    <button
+                      className="flex-1 min-w-0 flex items-start justify-between pl-5 pr-2 py-3.5 text-left gap-4"
+                      onClick={() => setExpanded((e) => ({ ...e, [paper.id]: !e[paper.id] }))}
+                      aria-expanded={Boolean(isOpen)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          {paper.source && (
+                            <span className="badge-gray text-xs">
+                              {SOURCE_LABELS[paper.source] || paper.source}
+                            </span>
+                          )}
+                          {paper.year && (
+                            <span className="text-xs text-gray-400">{paper.year}</span>
+                          )}
+                          <span className="text-xs text-gray-400">
+                            {paper.has_full_text ? 'Full text' : 'Abstract only'}
                           </span>
-                        )}
-                        {paper.year && <span className="text-xs text-gray-400">{paper.year}</span>}
-                        <span className="text-xs text-gray-400">
-                          {paper.has_full_text ? 'Full text' : 'Abstract only'}
-                        </span>
-                        {paper.relevance_score !== null && (
-                          <span
-                            className="text-xs text-gray-500"
-                            title={paper.relevance_reason ?? undefined}
-                          >
-                            Relevance {paper.relevance_score}/10
-                          </span>
-                        )}
-                        {summaryBy.has(paper.id) && (
-                          <span className="text-xs text-green-600">Analysed</span>
-                        )}
+                          {paper.relevance_score !== null && (
+                            <span
+                              className="text-xs text-gray-500"
+                              title={paper.relevance_reason ?? undefined}
+                            >
+                              Relevance {paper.relevance_score}/10
+                            </span>
+                          )}
+                          {summaryBy.has(paper.id) && (
+                            <span className="text-xs text-green-700">Analysed</span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">
+                          {paper.title}
+                        </p>
                       </div>
-                      <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">
-                        {paper.title}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                      {paper.url && (
-                        <a
-                          href={paper.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Open "${paper.title}" in a new tab`}
-                          className="p-1 text-gray-400 hover:text-brand-500 transition-colors"
-                        >
-                          <ExternalLink size={13} />
-                        </a>
-                      )}
-                      {isOpen ? (
-                        <ChevronUp size={15} className="text-gray-400" />
-                      ) : (
-                        <ChevronDown size={15} className="text-gray-400" />
-                      )}
-                    </div>
-                  </button>
+                      <span className="flex-shrink-0 mt-0.5" aria-hidden>
+                        {isOpen ? (
+                          <ChevronUp size={15} className="text-gray-400" />
+                        ) : (
+                          <ChevronDown size={15} className="text-gray-400" />
+                        )}
+                      </span>
+                    </button>
+                    {/* A sibling of the toggle, not inside it: links can't nest in buttons. */}
+                    {paper.url && (
+                      <a
+                        href={paper.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open "${paper.title}" in a new tab`}
+                        className="p-1 mr-4 mt-3.5 text-gray-400 hover:text-brand-600 transition-colors"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </div>
                   {isOpen && (
                     <PaperDetails
                       paper={paper}

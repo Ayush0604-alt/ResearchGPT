@@ -73,7 +73,7 @@ function Bubble({
           </ul>
         )}
         {time && (
-          <p className="text-xs text-gray-300 mt-1 px-1">
+          <p className="text-xs text-gray-400 mt-1 px-1">
             {new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         )}

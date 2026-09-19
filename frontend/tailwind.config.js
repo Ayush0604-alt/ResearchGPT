@@ -16,10 +16,18 @@ export default {
           300: '#fdba74',
           400: '#fb923c',
           500: '#f97316',
-          600: '#ea580c',
-          700: '#c2410c',
-          800: '#9a3412',
-          900: '#7c2d12',
+          // 600 and up are one step darker than Tailwind's orange so text and
+          // white-on-brand buttons meet WCAG AA contrast (4.5:1).
+          600: '#c2410c',
+          700: '#9a3412',
+          800: '#7c2d12',
+          900: '#431407',
+        },
+        // Tailwind's gray-400 (2.5:1 on white) is used for secondary text here;
+        // these keep that hierarchy at >= 4.5:1 on the page backgrounds.
+        gray: {
+          400: '#667085',
+          500: '#555d6b',
         },
         espresso: {
           800: '#3D3531',
