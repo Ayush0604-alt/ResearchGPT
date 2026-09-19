@@ -293,34 +293,34 @@ Use Alembic autogenerate, then review the result by hand:
 
 ## Phase 4: Harden and launch 🚀
 
-### ☐ Step 25: Rate limits and quotas · I§1, D§5 (R5)
+### ☑ Step 25: Rate limits and quotas · I§1, D§5 (R5)
 - `slowapi` per IP: register at 5/hour and login at 10/min.
 - Per user: at most 1 collection job at a time, 20 projects per day, and at most 25 papers per run. Return 429 with a clear message when a limit is hit.
 
 **Done when:** tests prove each limit.
 
-### ☐ Step 26: Move auth to an httpOnly cookie with refresh tokens · I§1, D§6
+### ☑ Step 26: Move auth to an httpOnly cookie with refresh tokens · I§1, D§6
 - A short-lived access token (15 min) and a refresh token (7 days, rotated on each use) in `httpOnly; Secure; SameSite=Lax` cookies. Add a `/auth/refresh` endpoint and a logout that revokes the refresh token.
 - CSRF protection: require a custom header (such as `X-Requested-With`) on requests that change data, together with SameSite.
 - Remove the JWT from `localStorage`. The LLM key is the **only** thing left there, by design.
 
 **Done when:** sessions last longer than an hour without re-login, and `localStorage` contains only `researchgpt-llm`.
 
-### ☐ Step 27: Final security headers · D§1
+### ☑ Step 27: Final security headers · D§1
 - CSP `connect-src 'self' https://generativelanguage.googleapis.com` (add the OpenAI and Anthropic domains in Step 38).
 - Add `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Permissions-Policy`.
 - Confirm there are no third-party scripts.
 
 **Done when:** securityheaders.com (or the Mozilla Observatory) gives an A.
 
-### ☐ Step 28: Observability · I§5, D§6
+### ☑ Step 28: Observability · I§5, D§6
 - JSON logs with `request_id` and `project_id`, set through contextvars.
 - Sentry on the backend and frontend. Scrub the `Authorization` and `Cookie` headers, and never capture request bodies or provider responses.
 - `/health` runs `SELECT 1` against the database. Compose and the host platform use it as the health check.
 
 **Done when:** a deliberately triggered error shows up in Sentry with no secrets in it.
 
-### ☐ Step 29: Deploy · I§5 (Docker), D§6
+### ☑ Step 29: Deploy · I§5 (Docker), D§6
 - Backend image: multi-stage build, runs as a non-root user, runs `alembic upgrade head` as a **release step** (not on every container start).
 - Postgres on Neon. The API on Fly.io, Render or Cloud Run with at least 2 instances. The frontend on Cloudflare Pages with an `/api/*` rewrite to the API, so everything is same-origin.
 - Put the secrets in the platform's secret store. **No LLM key anywhere on the server.**
@@ -328,7 +328,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** the production smoke test passes.
 
-### ☐ Step 30: Documentation and trust · I§6, D§6
+### ☑ Step 30: Documentation and trust · I§6, D§6
 - Rewrite `README.md` to describe the real architecture. Move features that don't exist yet under a "Roadmap" heading.
 - Add a `/privacy` page, "How your key is used": where the key is stored, which domains it is sent to, how to delete it, and what the server does keep (projects, papers, chats).
 - Update `claudeMD/architecture.md` and set D-19 in `decisions.md` to **Active**.
@@ -336,6 +336,13 @@ Use Alembic autogenerate, then review the result by hand:
 **Done when:** the README has no claims that the code doesn't back up. **Launch.**
 
 ---
+
+> **Phase 4 notes (2026-09-19):** 135 backend, 47 unit and 15 end-to-end tests pass.
+> - **Step 26:** refresh-token reuse revokes every session of that user, and the revocation is committed before the 401.
+> - **Step 27:** headers are in both `nginx.conf.template` and `public/_headers`, and a test keeps them identical. The production build loads in Chrome with no CSP violations.
+> - **Step 28:** no frontend Sentry (D-25). Also fixed log lines being dropped on Windows (UTF-8 stdout).
+> - **Step 29:** verified on a local production-like stack (`APP_ENV=production`, secure cookies, no LLM key): 8/8 smoke and BYOK e2e tests pass through nginx, and the image refuses to start with `GEMINI_API_KEY` set. **Not yet deployed to a real host.** That needs your accounts; follow DEPLOY.md.
+> - **Step 30:** added account deletion (`DELETE /auth/me`) and a `/privacy` page, and rewrote the README and the claudeMD docs.
 
 ## Phase 5: Find better papers
 

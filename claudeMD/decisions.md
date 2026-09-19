@@ -8,6 +8,10 @@ Each entry has a **Source** line that says where the reasoning comes from:
 
 Each entry uses this format: **Decision → Why → Trade-offs accepted → Status**.
 
+> **Update (2026-09-19):** D-1 to D-19 record the original design. Entries replaced during
+> the fixes are marked *Superseded*. D-20 to D-27 are the decisions made in
+> [fix-plan.md](fix-plan.md), with the reasoning behind each.
+
 ---
 
 ## D-1. FastAPI (async) + async SQLAlchemy 2.0 + asyncpg
@@ -80,7 +84,7 @@ features: no conditional edges, checkpointing, streaming or retry policies. In i
 current form it could be three plain `await` calls. The dependency is worth keeping
 only if those features get used (see improvements.md §4).
 
-**Status:** Active. **Source:** stated (for the naming) plus inferred.
+**Status:** Superseded by D-20 (LangGraph removed). **Source:** stated (for the naming) plus inferred.
 
 ---
 
@@ -112,7 +116,7 @@ comparison, trends, gaps and literature review together.
 - The UI can no longer show progress during analysis (a single step goes from 45% to 80%).
 - The model only sees abstracts, which limits the depth of the analysis.
 
-**Status:** Active. **Source:** stated (docstring, README, commit history).
+**Status:** Superseded by D-20 (browser-side map-reduce, per-paper extraction restored). **Source:** stated (docstring, README, commit history).
 
 ---
 
@@ -134,7 +138,7 @@ comparison, trends, gaps and literature review together.
 - A 429 is detected by matching the error message text.
 - There is no retry, backoff or request timeout.
 
-**Status:** Active. **Source:** stated (docstring) plus inferred.
+**Status:** Superseded by D-19 and D-23 (no server-side SDK; the browser calls Gemini's REST API). **Source:** stated (docstring) plus inferred.
 
 ---
 
@@ -157,7 +161,7 @@ Chat now pastes up to 15 abstracts into the prompt instead of retrieving chunks.
 - PDFs are still downloaded but nothing reads them (wasted bandwidth and disk).
 - Leftover config keys (`CHROMA_*`), startup directories and the `CitationSource` / `RAGResponse` schemas remain in the code.
 
-**Status:** Active. The README is out of date. **Source:** inferred from the diff of `26966f6`. *Please confirm the reason.*
+**Status:** Partly reversed. Full text is extracted again (D-21), and RAG is still deferred. **Source:** inferred from the diff of `26966f6`.
 
 ---
 
@@ -198,7 +202,7 @@ workflow, and the file says to "replace with Redis for multi-worker deployments.
 - **All task state is lost on restart.** A project that was `running` stays `running` in the database, and neither the UI nor the API can recover it (see improvements.md P0).
 - Nothing limits how many pipelines run at once.
 
-**Status:** Active. It is known to be temporary. **Source:** stated (docstring in `task_store.py`).
+**Status:** Superseded by D-22 (database-backed job with a heartbeat). **Source:** stated (docstring in `task_store.py`).
 
 ---
 
@@ -219,7 +223,7 @@ Deleting after success means a run that fails half-way does not erase the last g
 - The frontend shows the Run button only for `pending` and `failed`, so a completed project cannot be re-run from the UI.
 - Every re-run makes all its Gemini calls again, with nothing cached.
 
-**Status:** Active. **Source:** stated.
+**Status:** Updated. Re-collecting replaces papers and drops the stale review; completed projects can be re-run from the UI. **Source:** stated.
 
 ---
 
@@ -238,7 +242,7 @@ some sources will always be flaky, so they should not kill the whole run.
 parsed, or the search finds zero papers, the project still shows **Completed**
 with no review and no hint about why. Combined with D-10, the user cannot re-run it from the UI.
 
-**Status:** Active. **Source:** stated (comments in `workflow.py` and `comprehensive/agent.py`).
+**Status:** Superseded. Collection failures store a user-safe reason; in the browser a rejected key or rate limit stops the run, and a single bad paper is skipped. **Source:** stated.
 
 ---
 
@@ -254,7 +258,7 @@ return 204 "appeared to work but messages reappeared on reload." The explicit co
 The actual cause, when a dependency's cleanup code runs relative to the response,
 was patched in individual routes rather than fixed in one place.
 
-**Status:** Active. **Source:** stated.
+**Status:** Resolved. `get_db` owns the commit; routes only flush (fix-plan Step 14). **Source:** stated.
 
 ---
 
@@ -287,7 +291,7 @@ session store and works the same through the Vite proxy and through nginx.
 - A token in localStorage can be read by any XSS on the page.
 - Both python-jose and passlib are no longer maintained.
 
-**Status:** Active. **Source:** inferred (the reason for the bcrypt pin is well known).
+**Status:** Superseded by D-24 (httpOnly cookie sessions, PyJWT and pwdlib). **Source:** inferred.
 
 ---
 
@@ -316,7 +320,7 @@ PDF is not downloaded twice for a project.
 **Trade-offs:** No storage or vector-store abstraction exists yet, so "ready"
 really means "the env keys are defined". `services/` is empty.
 
-**Status:** Planned, not implemented. **Source:** stated (comments) plus inferred.
+**Status:** Dropped. PDFs are read in memory and discarded; only text is stored (D-21). **Source:** stated (comments) plus inferred.
 
 ---
 
@@ -334,7 +338,7 @@ which is what makes its `dangerouslySetInnerHTML` safe.
 - The Markdown support is partial: no links, no nested lists, no code blocks.
 - Data fetching and polling are written by hand in each page.
 
-**Status:** Active. **Source:** inferred.
+**Status:** Updated. TypeScript, TanStack Query, Zod and react-markdown with sanitising were added. **Source:** inferred.
 
 ---
 
@@ -349,7 +353,7 @@ standard `logging` module's. Log lines are prefixed with tags like `[Workflow]` 
 
 **Trade-offs:** The logs are plain text, not JSON, and carry no request or task id.
 
-**Status:** Active. **Source:** inferred.
+**Status:** Active. JSON output and request IDs were added (fix-plan Step 28). **Source:** inferred.
 
 ---
 
@@ -369,4 +373,116 @@ keep control of their own keys and spending.
 
 The full plan is in [design-improvements.md](design-improvements.md).
 
-**Status:** Planned. **Source:** stated by the project owner.
+**Status:** Active (fix-plan Phase 3). **Source:** stated by the project owner.
+
+---
+
+## D-20. The analysis runs in the browser as a map-reduce
+
+**Decision:**
+- **Map:** one structured extraction per paper, 3 at a time, each saved as soon as it finishes.
+- **Reduce:** one review over all the extractions.
+
+Both run in the browser with the user's key. There is no LangGraph.
+
+**Why:**
+- It meets D-19: the server never sees the key.
+- Saving per paper makes runs resumable. A closed tab or a rate limit leaves the project `collected`, and "Continue analysis" skips the papers already done.
+- Per-paper findings come back cheaply, with a fast model for extraction and a stronger one for the review.
+- Grounding improves. Every claim cites `[P<id>]`, and citations of unknown papers are removed.
+
+**Trade-offs:**
+- The tab must stay open during the analysis. Mitigations: a warning before closing, a resumable run, and a "Stop" button.
+
+**Status:** Active. **Source:** fix-plan Step 22.
+
+---
+
+## D-21. Full text via pypdf, and PDFs are never stored
+
+**Decision:** The server extracts text with **pypdf** (BSD licence) in a worker thread, bounded to 60 pages and 150k characters. PDFs are downloaded into memory, read, and discarded. Only the text is stored.
+
+**Why:**
+- The model needs methods and results, not only abstracts.
+- PyMuPDF (`pymupdf4llm`) is AGPL, which carries obligations for a hosted service.
+- Hosting platforms usually have temporary disks.
+- Not keeping files avoids storing copyrighted PDFs.
+
+**Trade-offs:** pypdf's layout extraction is weaker than PyMuPDF's or GROBID's. Tables and multi-column layouts can come out jumbled. Sending the PDF itself to the model (fix-plan Step 35) would fix that for providers that accept PDFs.
+
+**Status:** Active. **Source:** fix-plan Step 21.
+
+---
+
+## D-22. A database-backed collection job with a heartbeat, not a job queue
+
+**Decision:** Collection runs as an in-process background task. It writes `progress`, `current_step` and a `heartbeat_at` (every 15 seconds) to `research_projects`. A project that is `collecting` with a heartbeat older than 90 seconds is treated as dead: it's marked failed at startup and whenever the project is read, and a live job blocks a second one with a 409.
+
+**Why:** The plan proposed procrastinate or arq. Both need a worker process, which means a second paid instance on most platforms. A heartbeat gives the property that matters: no project stuck in `collecting` forever, and correct behaviour with several API instances or after a restart. No new infrastructure is needed.
+
+**Trade-offs:**
+- A job isn't retried automatically after a crash; the user runs it again.
+- Very long jobs keep a request worker's event loop busy. That's fine at 25 papers or fewer.
+
+**Status:** Active. **Source:** fix-plan Step 20.
+
+---
+
+## D-23. Gemini through REST with `fetch`, not the JS SDK
+
+**Decision:** The browser calls `generativelanguage.googleapis.com` directly with `fetch`, sending the key only in the `x-goog-api-key` header. Structured output uses `responseSchema`, which is generated from Zod schemas.
+
+**Why:** A smaller bundle, full control over where the key goes (never in a URL, never in an error message), and one provider-neutral interface (`LLMProvider`), so OpenAI and Anthropic adapters can follow.
+
+**Status:** Active. **Source:** fix-plan Step 19.
+
+---
+
+## D-24. Sessions in httpOnly cookies with rotating refresh tokens
+
+**Decision:**
+- **Access token:** a 15-minute JWT in an httpOnly, SameSite=Lax cookie.
+- **Refresh token:** a 7-day random token, stored only as a hash and rotated on every use. Reusing one revokes all of the user's sessions.
+- **CSRF:** unsafe methods need an `X-Requested-With` header.
+- **API clients:** a Bearer token still works.
+
+**Why:** Once users' LLM keys live in localStorage, nothing else secret should be readable by JavaScript. Rotation and reuse detection limit the damage if a refresh token is stolen.
+
+**Status:** Active. **Source:** fix-plan Step 26.
+
+---
+
+## D-25. Defence in depth for a key-in-the-browser app
+
+**Decision:**
+- a strict CSP (scripts only from our own origin; connections only to our API and the LLM provider)
+- a self-hosted font
+- all model output rendered through react-markdown with rehype-sanitize
+- the same headers in nginx and in `_headers`, kept identical by a test
+- no third-party scripts, including no frontend error tracker
+
+**Why:** Cross-site scripting is the one way a user's key could be stolen from our site. Every third-party script would be another way in.
+
+**Status:** Active. **Source:** fix-plan Steps 10, 27 and 28.
+
+---
+
+## D-26. Abuse limits: per IP for auth, per user in the database
+
+**Decision:**
+- **Per IP (slowapi):** register 5/hour, login 10/minute.
+- **Per user, checked in Postgres:** 20 projects per 24 hours, and one active collection at a time.
+
+**Why:** The server still pays for search APIs, PDF downloads and storage. The per-user quotas live in the database, so they hold across instances. The IP limits count per instance unless `RATE_LIMIT_STORAGE_URI` points at Redis.
+
+**Status:** Active. **Source:** fix-plan Step 25.
+
+---
+
+## D-27. Migrations as a release step; non-root images
+
+**Decision:** `alembic upgrade head` runs once per deploy (the compose `migrate` service, or the platform's release command), not on container start. The API image is multi-stage, has no compiler, and runs as the unprivileged `app` user.
+
+**Why:** Several instances starting together must not race to migrate. A non-root process with no compiler limits what an attacker can do after a compromise.
+
+**Status:** Active. **Source:** fix-plan Step 29.

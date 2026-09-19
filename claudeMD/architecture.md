@@ -1,307 +1,287 @@
 # ResearchGPT — Architecture
 
-> Describes the code **as it exists on `main` (commit `1446fba`)**, not the README.
-> Where the README and the code disagree, this document follows the code. See
-> [improvements.md](improvements.md#6-documentation-drift) for the list of mismatches.
+> Describes the code **as of Phase 4 of [fix-plan.md](fix-plan.md) (2026-09-19)**.
+> The earlier LangGraph and server-side Gemini design is described in
+> [decisions.md](decisions.md), in the entries marked *Superseded*.
 
 ---
 
 ## 1. What the system does
 
-A user creates a **research project** with a topic. The backend runs a 3-step
-LangGraph pipeline:
+1. A user signs up and saves their **own Gemini API key**. It stays in their browser's localStorage and is sent only to Google.
+2. They create a project with a research topic and click **Run analysis**.
+3. **Server:** a collection job searches three academic APIs, downloads the open-access PDFs through an SSRF guard, extracts their text, and stores it.
+4. **Browser:** the page analyses the papers with the user's key, in a map-reduce:
+   - **map:** one structured extraction per paper
+   - **reduce:** one cited literature review
 
-1. search three academic APIs for papers
-2. download any open-access PDFs
-3. send the paper abstracts to Gemini in **one** structured-output call
-
-The Gemini output is stored as a **literature review**, which includes trends and
-research gaps. The user can then **chat** about the papers. Each chat question is
-answered by Gemini, with the stored abstracts pasted into the prompt as context.
+   Each result is saved as soon as it's ready.
+5. The user reads the review and chats with the papers. Chat also runs in the browser, and only finished exchanges are saved.
 
 ```
-┌──────────────────────────┐        ┌────────────────────────────────────────────┐
-│  React SPA (Vite)        │  /api  │  FastAPI (uvicorn, single process)         │
-│  - Zustand auth store    ├───────►│  ├─ routes: auth, projects, agents,        │
-│  - axios + JWT header    │  JSON  │  │          papers, reviews, chat          │
-│  - 2.5s status polling   │◄───────┤  ├─ BackgroundTasks ─► LangGraph workflow  │
-└──────────────────────────┘        │  │     ├─ PaperSearchAgent ──► S2/arXiv/PubMed
-   dev: Vite proxy                  │  │     ├─ PaperCollectionAgent ─► PDFs on disk
-   prod: nginx proxy                │  │     └─ ComprehensiveAnalysisAgent ─► Gemini
-                                    │  ├─ in-memory _task_store (progress)       │
-                                    │  └─ async SQLAlchemy ──► PostgreSQL        │
-                                    └────────────────────────────────────────────┘
+┌─────────────── Browser (React + TS) ───────────────┐
+│ localStorage: researchgpt-llm (key, models)        │
+│ llm/ (Gemini adapter, generateJSON, retry, stream) │──── x-goog-api-key ───▶ generativelanguage.googleapis.com
+│ research/ (runAnalysis, prompts, chat)             │
+│ TanStack Query ── axios (X-Requested-With) ──┐     │
+└──────────────────────────────────────────────┼─────┘
+                     httpOnly cookies, /api/*  ▼
+┌──────────────── FastAPI (single codebase, N instances) ───────────────┐
+│ routes: auth · projects · papers · reviews · chat                     │
+│ services: collection (job + heartbeat) · analysis (store results)     │
+│           · session (cookies, refresh rotation)                       │
+│ utils: safe_http (SSRF-safe fetch) · pdf_text (pypdf)                 │
+└──────────────┬─────────────────────────────────────┬──────────────────┘
+               ▼                                     ▼
+          PostgreSQL                  Semantic Scholar · arXiv · PubMed
 ```
+
+**The server never calls an LLM.** CI fails if an LLM SDK or provider API host
+appears in the backend, and the API refuses to start in production if an LLM key
+is configured.
 
 ---
 
-## 2. Repository layout (actual)
+## 2. Repository layout
 
 ```
 ResearchGPT/
-├── docker-compose.yml          # postgres, redis (unused), backend, frontend
+├── DEPLOY.md, README.md
+├── docker-compose.yml        # db → migrate (alembic) → backend (healthy) → frontend
+├── docker-compose.test.yml   # throwaway Postgres for tests (127.0.0.1:55432)
+├── .github/workflows/ci.yml  # backend (lint, tests, alembic check, no-LLM check), frontend, e2e
 ├── backend/
-│   ├── main.py                 # FastAPI app, middleware, router mounting, lifespan
-│   ├── alembic/                # single migration: versions/0001_initial.py
+│   ├── main.py               # app, middleware (request id, security headers, CSRF), health
+│   ├── alembic/versions/     # 0001 … 0005
+│   ├── scripts/e2e_server.py # e2e API: fresh DB, stubbed paper search
+│   ├── tests/                # pytest (see §7)
 │   └── app/
-│       ├── core/
-│       │   ├── config.py       # pydantic-settings Settings (env / .env)
-│       │   ├── security.py     # bcrypt hashing, JWT encode/decode, get_current_user_id
-│       │   ├── logging.py      # loguru: stdout + daily-rotated file
-│       │   └── task_store.py   # module-level dict used as a task-progress store
-│       ├── db/                 # DeclarativeBase, async engine + get_db dependency
-│       ├── models/models.py    # 8 ORM tables
-│       ├── schemas/schemas.py  # Pydantic v2 request/response models
-│       ├── agents/
-│       │   ├── workflow.py     # LangGraph StateGraph (3 nodes) + runner
-│       │   ├── search/         # Agent 1 — Semantic Scholar, arXiv, PubMed
-│       │   ├── collection/     # Agent 2 — PDF download
-│       │   └── comprehensive/  # Agent 3 — single batched Gemini call
-│       ├── api/routes/         # auth, projects, agents, papers, reviews, chat
-│       ├── utils/gemini_client.py  # google-genai client singleton + RateLimitError
-│       └── services/           # empty
+│       ├── api/deps.py       # get_owned_project / load_owned_project (+ stale-job expiry)
+│       ├── api/routes/       # auth, projects, papers, reviews, chat
+│       ├── core/             # config, security, logging (+Sentry), rate_limit
+│       ├── services/         # collection_service, analysis_service, session_service
+│       ├── agents/search/    # PaperSearchAgent (S2, arXiv, PubMed)
+│       ├── utils/            # safe_http, pdf_text
+│       ├── models/, schemas/, db/
 └── frontend/
-    ├── nginx.conf              # SPA fallback + /api reverse proxy to backend:8000
-    ├── vite.config.js          # dev server :5173, proxies /api → :8000
+    ├── nginx.conf.template   # security headers + /api proxy to ${API_UPSTREAM}
+    ├── public/_headers       # same headers for static hosts (a test keeps them identical)
+    ├── e2e/                  # Playwright: smoke, byok, research
     └── src/
-        ├── App.jsx             # routes + ProtectedRoute
-        ├── services/api.js     # axios instance, JWT interceptor, API modules
-        ├── store/authStore.js  # zustand + persist (localStorage)
-        ├── components/layout/AppLayout.jsx
-        ├── pages/              # Login, Register, Dashboard, NewProject, Project, Chat, Review
-        ├── hooks/, utils/      # empty
-        └── styles/globals.css  # Tailwind component classes (btn-*, card, badge-*)
+        ├── llm/              # types, providers/gemini, generate (JSON + repair), retry, schema
+        ├── research/         # prompts, runAnalysis, useResearchRun, chat, useChat
+        ├── services/         # api (axios + refresh), queries (TanStack), types
+        ├── store/            # authStore (user only), llmSettings (the key)
+        ├── components/       # Markdown (sanitised), layout
+        └── pages/            # Dashboard, NewProject, Project, Review, Chat, Settings, Privacy, Login, Register
 ```
 
 ---
 
 ## 3. Backend
 
-### 3.1 Application bootstrap — [main.py](../backend/main.py)
+### 3.1 Request pipeline — [main.py](../backend/main.py)
 
-- `setup_logging()` runs at import time.
-- `lifespan` creates `PDF_STORAGE_DIR`, `CHROMA_PERSIST_DIR`, `./storage/presentations`
-  and `./logs` on startup, and disposes the engine on shutdown. The Chroma and
-  presentation directories are left over from the older architecture; nothing writes to them now.
-- Middleware order: CORS, then GZip (min 1000 bytes).
-- All routers are mounted under `settings.API_V1_PREFIX`, which defaults to **`/api`** (not `/api/v1`).
-- The schema is managed **only by Alembic**. The app never calls `metadata.create_all`.
+Middleware, from the outside in:
+
+- **CORS:** `CORS_ORIGINS`.
+- **GZip.**
+- **Security headers:** `nosniff`, `no-referrer`, a `default-src 'none'` CSP and `Cache-Control: no-store` on every `/api` response.
+- **CSRF:** `POST`, `PUT`, `PATCH` and `DELETE` under `/api` need an `X-Requested-With` header, or get a 403.
+- **Request ID:** every log line of a request and its response carry an `X-Request-ID`. A well-formed incoming ID is reused.
+
+**Startup:**
+- Fails collection jobs whose heartbeat went stale.
+- Creates `logs/` only when `LOG_TO_FILE` is on.
+
+**Health and docs:**
+- `/health` does a `SELECT 1` and returns 503 when the database is down.
+- `/docs`, `/redoc` and `/openapi.json` exist only in development.
 
 ### 3.2 Configuration — [core/config.py](../backend/app/core/config.py)
 
-`Settings(BaseSettings)` reads from the environment and from `.env`. Unknown variables are ignored.
+Settings are read from environment variables and `.env`; environment variables win. Outside `APP_ENV=development` the API **refuses to start** when:
+- `SECRET_KEY` is missing, shorter than 32 characters, or a known placeholder
+- `COOKIE_SECURE` is false
+- any of `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set
 
-| Group | Keys | Actually used? |
-|---|---|---|
-| App | `APP_NAME`, `APP_ENV`, `DEBUG`, `API_V1_PREFIX` | yes (`DEBUG` also turns on SQL echo) |
-| Security | `SECRET_KEY` (has an insecure default), `ACCESS_TOKEN_EXPIRE_MINUTES`, `ALGORITHM` | yes |
-| DB | `DATABASE_URL` (asyncpg), `SYNC_DATABASE_URL` (psycopg3, used by Alembic) | yes |
-| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-2.5-flash`) | yes |
-| Storage | `PDF_STORAGE_DIR`, `MAX_PDF_SIZE_MB` | yes |
-| CORS | `CORS_ORIGINS` (JSON list or comma-separated) | yes |
-| Limits | `MAX_PAPERS_PER_SEARCH`, `MAX_PAPERS_TO_DOWNLOAD` | **no** (declared, never read) |
-| Chroma | `CHROMA_PERSIST_DIR`, `CHROMA_COLLECTION_NAME` | only for `mkdir` |
-| Redis / S3 / Pinecone | `REDIS_URL`, `AWS_*`, `USE_S3`, `PINECONE_*`, `USE_PINECONE` | **no** (placeholders) |
+Other settings:
 
-A validator rewrites a `SYNC_DATABASE_URL` that starts with `postgresql://` to
-`postgresql+psycopg://`, so Alembic always uses the psycopg3 driver.
+| Group | Settings |
+|---|---|
+| Sessions | `ACCESS_TOKEN_EXPIRE_MINUTES` (15), `REFRESH_TOKEN_EXPIRE_DAYS` (7), `COOKIE_SECURE`, `BCRYPT_ROUNDS` (12) |
+| Abuse limits | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_STORAGE_URI`, `MAX_PROJECTS_PER_DAY` (20) |
+| Collection | `MAX_PDF_SIZE_MB` (25) |
+| Logging | `LOG_FORMAT` (`text`/`json`), `LOG_TO_FILE`, `SQL_ECHO`, `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE` |
 
-### 3.3 Database layer — [db/session.py](../backend/app/db/session.py)
-
-- There is one async engine (`create_async_engine`) with `pool_pre_ping=True`.
-- If the URL contains `neon.tech`, `supabase` or `sslmode=require`, the query string is
-  removed and `ssl="require"` is passed through `connect_args`, because asyncpg rejects `sslmode`.
-- `get_db()` yields an `AsyncSession`. It commits on success and rolls back on exception.
-  Several routes also call `db.commit()` themselves (see decisions.md D-12).
-- The background worker opens its own `AsyncSessionLocal()`, because it runs after the request's session has closed.
-
-### 3.4 Data model — [models/models.py](../backend/app/models/models.py)
+### 3.3 Data model — [models/models.py](../backend/app/models/models.py)
 
 ```mermaid
 erDiagram
     users ||--o{ research_projects : owns
+    users ||--o{ refresh_tokens : has
     research_projects ||--o{ papers : has
     research_projects ||--o| literature_reviews : has
-    research_projects ||--o| presentations : has
     research_projects ||--o{ chat_messages : has
     papers ||--o| paper_summaries : has
     papers ||--o| paper_findings : has
 ```
 
-| Table | Written by | Notes |
-|---|---|---|
-| `users` | `/auth/register` | email + username unique |
-| `research_projects` | `/projects`, agents worker | `status` is a plain string: `pending / running / completed / failed`; `task_id` links to the in-memory store |
-| `papers` | agents worker | `authors` is a JSON-encoded list stored in TEXT; `status` is always saved as `"processed"` |
-| `paper_summaries` | **nothing** | the worker only writes a row if `paper["summary"]` exists, and no current agent sets it |
-| `paper_findings` | **nothing** | same: the `findings` key is never populated |
-| `literature_reviews` | agents worker | intro / body / discussion / conclusion from Gemini, plus `trends` and `gaps` |
-| `presentations` | **nothing** | the PPTX agent was removed; `state["presentation"]` is always `{}` |
-| `chat_messages` | `/chat/query` | `citations` JSON column is never filled |
+General rules:
+- All foreign keys are `ON DELETE CASCADE`, and the ORM relationships use `passive_deletes`, so deleting a user removes everything they own.
+- All timestamps are `TIMESTAMPTZ`.
 
-Project children use ORM-level `cascade="all, delete-orphan"`. The foreign keys
-themselves have no `ON DELETE CASCADE`, and there are no indexes on the `project_id` / `paper_id` FK columns.
+| Table | Notes |
+|---|---|
+| `research_projects` | `status`: `pending → collecting → collected → completed`, or `failed`. Also `progress`, `current_step`, `heartbeat_at`, `error` (a message safe to show users), `started_at` and `finished_at`. |
+| `papers` | Metadata plus `full_text`. The text is *deferred* (loaded only with `undefer`); listings use the computed `has_full_text` flag instead. `doi` is indexed. |
+| `paper_summaries`, `paper_findings` | One row each per paper, written by the browser's extraction. `raw_json` keeps the full extraction, including `metrics` and `key_quotes`. |
+| `literature_reviews` | Introduction, body, discussion, conclusion, trends, gaps and comparison. |
+| `chat_messages` | Question and answer pairs. `citations = {"papers": [{paper_id, title}]}`. Ordered by `(created_at, id)`. |
+| `refresh_tokens` | Only the SHA-256 hash of each token is stored, with `expires_at` and `revoked_at`. |
 
-### 3.5 API surface — [api/routes/](../backend/app/api/routes/)
+### 3.4 API — [api/routes/](../backend/app/api/routes/) (prefix `/api`)
 
-All paths are prefixed with `/api`.
+Every project-scoped route goes through `get_owned_project`, which returns 404 both when the project doesn't exist and when it belongs to someone else. That dependency is also where a dead collection job is marked failed.
 
-| Method | Path | Auth | Ownership check | Purpose |
-|---|---|---|---|---|
-| POST | `/auth/register` | — | — | create user |
-| POST | `/auth/login` | — | — | returns JWT + `user_id`, `username` |
-| GET | `/auth/me` | JWT | self | current user |
-| POST | `/projects` | JWT | sets owner | create project |
-| GET | `/projects` | JWT | ✅ filtered by user | list |
-| GET | `/projects/{id}` | JWT | ✅ | get |
-| DELETE | `/projects/{id}` | JWT | ✅ | delete (cascades) |
-| POST | `/agents/run` | JWT | ✅ | start pipeline (returns `task_id`) |
-| GET | `/agents/status/{task_id}` | **none** | ❌ | poll progress from `_task_store` |
-| GET | `/papers/{project_id}` | JWT | ❌ | list papers |
-| GET | `/papers/{project_id}/summaries` | JWT | ❌ | always empty (see 3.4) |
-| GET | `/papers/{project_id}/findings` | JWT | ❌ | always empty |
-| GET | `/reviews/{project_id}` | JWT | ❌ | literature review |
-| GET | `/reviews/{project_id}/markdown` | JWT | ❌ | review rendered as Markdown text |
-| GET | `/chat/history/{project_id}` | JWT | ❌ | messages |
-| DELETE | `/chat/history/{project_id}` | JWT | ❌ | bulk delete |
-| POST | `/chat/query` | JWT | ❌ | ask a question → Gemini |
-| GET | `/`, `/health` | — | — | liveness |
+| Route | Purpose |
+|---|---|
+| `POST /auth/register` (5/hour per IP), `POST /auth/login` (10/min per IP) | Login sets the session cookies and returns the user; no token appears in the body. |
+| `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `DELETE /auth/me` | Refresh rotates the token. Logout revokes the session. Account deletion requires the password. |
+| `GET/POST /projects`, `GET/DELETE /projects/{id}` | Creating is limited to 20 projects per 24 hours per user. |
+| `POST /projects/{id}/collect` | Starts the collection job. Returns 409 if it's already running, and 429 if another of the user's projects is collecting. |
+| `PUT /projects/{id}/papers/{paper_id}/extraction` | Saves one paper's extraction. Returns 409 unless the project is collected or completed. |
+| `PUT /projects/{id}/analysis` | Saves the review and marks the project completed. |
+| `GET /papers/{id}`, `/texts`, `/summaries`, `/findings` | `/texts` includes the full text, for building prompts. |
+| `GET /reviews/{id}`, `GET /reviews/{id}/markdown` | |
+| `GET/DELETE /chat/history/{id}`, `POST /chat/{id}/messages` | The server keeps only citations of the project's own papers. |
 
-The ❌ rows are a real authorization gap. Details are in [improvements.md](improvements.md#1-security).
+### 3.5 Collection job — [services/collection_service.py](../backend/app/services/collection_service.py)
 
-### 3.6 Authentication — [core/security.py](../backend/app/core/security.py)
-
-- Passwords are hashed with passlib `CryptContext(bcrypt)`. `bcrypt==3.2.0` is pinned for passlib compatibility.
-- Tokens are JWT HS256 (python-jose). `sub` holds the user id as a string, and the default expiry is 60 min. There are no refresh tokens.
-- The `get_current_user_id` dependency returns only the `int` id. It does not load the user,
-  so a deactivated user's token keeps working until it expires.
-- On the frontend, the token is saved in `localStorage` through zustand `persist`.
-  An axios interceptor attaches it and forces a logout on any 401.
-
-### 3.7 The research pipeline
-
-#### Lifecycle of one run
-
-```mermaid
-sequenceDiagram
-    participant UI as ProjectPage
-    participant API as POST /agents/run
-    participant TS as _task_store (dict)
-    participant BG as BackgroundTask
-    participant WF as LangGraph
-    participant DB as Postgres
-
-    UI->>API: {project_id, max_papers:10}
-    API->>DB: project.status = running, task_id = task_{pid}_{uid}_{ts}
-    API->>TS: task_id → {running, 0%}
-    API-->>UI: task_id
-    API->>BG: _run_workflow_background (after response)
-    loop every 2.5s
-        UI->>TS: GET /agents/status/{task_id}
-    end
-    BG->>WF: run_research_workflow()
-    WF->>TS: progress 5 → 20 → 25 → 40 → 45 → 80
-    WF-->>BG: final ResearchState
-    BG->>DB: delete old papers/review/presentation, insert new, status=completed
-    BG->>TS: {completed, 100}
+```
+search (PaperSearchAgent, 3 sources concurrently, dedup by title)
+  → for each paper with a pdf_url (4 at a time):
+       fetch_public (utils/safe_http): http(s) only, every resolved address and
+         every redirect hop must be public, ≤3 redirects, size cap while streaming
+       extract_pdf_text (utils/pdf_text): pypdf in a thread, ≤60 pages, ≤150k chars
+  → replace_papers (also deletes the now-stale review) → status 'collected'
 ```
 
-#### Graph — [agents/workflow.py](../backend/app/agents/workflow.py)
+**Running and monitoring:**
+- The job runs as a FastAPI `BackgroundTask` and writes a **heartbeat** every 15 seconds.
+- `is_active` means `collecting` with a heartbeat less than 90 seconds old.
+- A stale job is marked failed in two places: at startup (`fail_stale_collections`) and lazily whenever the project is read. This is safe with several instances.
 
-The graph is linear: `step_paper_search → step_paper_collection → step_comprehensive_analysis → END`.
-Node names have a `step_` prefix because LangGraph 0.2 raises an error when a node name matches a state key.
+**Failures:**
+- Expected failures (`CollectionError`) store their message for the user.
+- Anything unexpected is logged with its stack trace and stored as a generic message.
 
-`ResearchState` (TypedDict) holds `topic, project_id, max_papers, task_id, papers,
-comparison, trends, gaps, literature_review, presentation, current_agent, progress, errors`.
-`presentation` and `errors` are never written. `comparison` is written but never persisted.
+**Logging:** every log line carries the `project_id`.
 
-Progress is sent to the UI as a side effect: `_update_progress` mutates `_task_store`
-directly, because LangGraph state is not visible from outside the running graph.
+### 3.6 Sessions — [services/session_service.py](../backend/app/services/session_service.py)
 
-| Node | Agent | Behaviour | On failure |
+| Cookie | Content | Path | Lifetime |
 |---|---|---|---|
-| Paper Search | [search/agent.py](../backend/app/agents/search/agent.py) | Queries Semantic Scholar, arXiv (Atom XML) and PubMed (esearch + efetch) concurrently with `asyncio.gather`. Each source is capped at 10 results and retried 3× with exponential backoff (tenacity). Papers with abstracts under 20 chars are dropped, duplicates are removed by the first 80 chars of the lowercased title, and the list is truncated to `max_papers`. | a failing source is logged and skipped; if the whole node fails, `papers = []` |
-| Paper Collection | [collection/agent.py](../backend/app/agents/collection/agent.py) | For each paper with a `pdf_url`, it streams the PDF to `storage/pdfs/{project_id}/{md5(url)[:12]}.pdf`. It stops at `MAX_PDF_SIZE_MB` and deletes the partial file, and skips PDFs that were already downloaded. Downloads run **sequentially**. | a failed paper keeps `pdf_path = None` |
-| Comprehensive Analysis | [comprehensive/agent.py](../backend/app/agents/comprehensive/agent.py) | Builds one prompt from **title, year, authors and abstract** of up to 10 papers. It calls Gemini with `response_schema=ComprehensiveAnalysisSchema` (`comparison, trends, gaps, literature_review{introduction, body, discussion, conclusion}`), `max_tokens=8000`, `temperature=0.3`, then slices from `{` to `}` and runs `json.loads`. | `RateLimitError` goes up to the worker and the project is marked FAILED; any other error returns an empty skeleton and the project is still marked COMPLETED |
+| `rg_access` | JWT (PyJWT, HS256) | `/api` | 15 min |
+| `rg_refresh` | opaque token | `/api/auth` | 7 days |
 
-> **Important:** the downloaded PDFs are **never read**. Analysis and chat use only the abstracts.
+- Both cookies are httpOnly and SameSite=Lax, and Secure when `COOKIE_SECURE` is on.
+- **Rotation:** refreshing revokes the old token and issues a new one.
+- **Reuse detection:** presenting an already-revoked token revokes every session of that user. That revocation is committed before the 401 is raised, because `get_db` would otherwise roll it back.
+- **API clients:** a `Bearer` token in the `Authorization` header is still accepted, and it takes precedence over the cookie.
+- **Passwords:** bcrypt through pwdlib. Existing passlib hashes still verify.
 
-#### Gemini client — [utils/gemini_client.py](../backend/app/utils/gemini_client.py)
+### 3.7 Transactions — [db/session.py](../backend/app/db/session.py)
 
-- A lazily created `google.genai.Client`, used through its async API `client.aio.models.generate_content`.
-- `ask_gemini(prompt, max_tokens, response_schema=None)` returns the text. When a
-  schema is passed, it sets `response_mime_type="application/json"`.
-- A 429 error is recognised by matching the text `"429"` / `"ResourceExhausted"` and
-  re-raised as `RateLimitError`. There is no retry, backoff, token accounting or timeout.
-
-#### Persisting results — `_run_workflow_background` in [routes/agents.py](../backend/app/api/routes/agents.py)
-
-After the graph finishes, the worker opens one session and:
-
-1. deletes the project's existing `Paper` rows (their summary and findings rows cascade), `LiteratureReview` and `Presentation`
-2. inserts the new papers (title truncated to 999 chars, URLs to 1999)
-3. inserts a `LiteratureReview` if Gemini returned one
-4. sets `project.status = completed` and commits
-
-If anything raises an exception, the task becomes `failed` and the project is set to `FAILED` in a separate session.
-
-### 3.8 Chat — [routes/chat.py](../backend/app/api/routes/chat.py)
-
-Chat does not use RAG. For each question, the route:
-
-1. saves the user message and commits
-2. loads the project's papers and pastes up to 15 `title (year) + abstract` into the prompt
-3. asks Gemini (max 2048 tokens) to answer using only that context
-4. saves the answer. If Gemini fails, the saved answer is `"Sorry, I encountered an error: {e}"`.
-5. returns `{"answer", "sources": []}`
-
-The frontend reads `data.citations` (not `sources`), so citations never render.
-Earlier conversation turns are **not** sent to the model, so each question is answered on its own.
-
-### 3.9 Logging — [core/logging.py](../backend/app/core/logging.py)
-
-Loguru writes to stdout at DEBUG or INFO depending on `DEBUG`. It also writes to
-`logs/researchgpt_{date}.log`, rotated at midnight, kept for 30 days, and zipped.
+`get_db` owns the commit. Routes and services only add and flush. Background code opens its own `AsyncSessionLocal()` and commits itself.
 
 ---
 
 ## 4. Frontend
 
-| Concern | Implementation |
-|---|---|
-| Build | Vite 5, React 18, Tailwind 3 (custom `brand` orange / `cream` / `espresso` palette, Outfit font) |
-| Routing | react-router v6. `/login` and `/register` are public. Everything else sits inside `ProtectedRoute` + `AppLayout` (sidebar) |
-| Auth state | zustand `persist` → `localStorage["researchgpt-auth"]` = `{token, user}` |
-| HTTP | [services/api.js](../frontend/src/services/api.js): axios with `baseURL: '/api'`. There is one API module per backend router. |
-| Pages | **Dashboard** lists and deletes projects · **NewProject** creates one · **Project** runs the pipeline, polls status every 2.5 s, shows the step dots and the paper list · **Chat** shows history, suggestion chips, sends questions and clears history · **Review** has six tabs, a hand-written Markdown renderer (`renderMd`, HTML-escaped) and a `.md` download |
-| Notifications | react-hot-toast |
-| Icons | lucide-react |
+### 4.1 LLM layer — [src/llm/](../frontend/src/llm/)
 
-The step indicator on `ProjectPage` still lists the **9 steps of the old pipeline**.
-Its `STEPS` array does not contain `"Comprehensive Analysis"`, so the step dots stop moving during the longest step.
+**Provider interface** (`types.ts`): `LLMProvider` with `listModels`, `complete` and `stream`. Errors are typed: `InvalidKeyError`, `RateLimitError` (which may carry a retry delay), and `LLMError` (which can be marked retryable).
+
+**Gemini adapter** (`providers/gemini.ts`):
+- Calls the REST API with `fetch`, sending the key in `x-goog-api-key` and never in a URL.
+- Uses `responseSchema` for JSON output, reads streamed answers from `streamGenerateContent?alt=sse`, and drops "thought" parts.
+- Maps finish reasons to `stop`, `length` or `blocked`.
+
+**`generateJSON`** (`generate.ts`) validates against a Zod schema, which `schema.ts` converts for Gemini. It handles bad replies like this:
+
+| Problem | Response |
+|---|---|
+| Reply doesn't match the schema | one repair round, showing the model the validation error |
+| Reply cut off by the token limit | one retry with twice the budget |
+| Safety block | fail immediately |
+| Rate limit or transient error | backoff with jitter (`retry.ts`) |
+
+### 4.2 Research runs — [src/research/](../frontend/src/research/)
+
+- **`prompts.ts`:**
+  - Each paper goes inside `<paper id="P…">`, with the instruction that it's data, never instructions.
+  - Full text is trimmed to 60k characters.
+  - `ExtractionSchema` and `ReviewSchema` define the outputs.
+  - `sanitizeReview` removes citations of unknown papers.
+- **`runAnalysis.ts`:** the orchestration, kept independent of React.
+  - Processes only papers without a saved extraction, three at a time, saving each one.
+  - Skips a paper the model can't handle.
+  - Stops on a rejected key, an exhausted rate limit, or a failure of our own API.
+  - Then writes the review with the stronger model.
+- **`useResearchRun.ts`:**
+  - `start()` means collect, poll until done, then analyse. `resume()` means analyse only.
+  - Warns before the tab is closed mid-analysis, and aborts when you navigate away.
+- **`chat.ts` / `useChat.ts`:** the context is each paper's findings (or its abstract) plus the last 8 messages. The answer streams in and is saved only once complete.
+
+### 4.3 Server state and sessions
+
+- **Server state:** `services/queries.ts` holds all the TanStack Query hooks. A project polls itself every 2 seconds while `collecting`, and pauses while the tab is hidden.
+- **API client** (`services/api.ts`):
+  - Sends `X-Requested-With` on every request.
+  - On a 401 it makes one refresh attempt, shared by concurrent requests, and retries.
+  - If that fails, it signs out.
+- **Stores:**
+  - `authStore` keeps only the user object (nothing secret).
+  - `llmSettings` holds the key, a "tested" flag and the model choices. It's persisted separately from auth, so signing out keeps it.
+- **Rendering:** `components/Markdown.jsx` is the only way model output gets rendered: react-markdown plus remark-gfm plus rehype-sanitize, with no raw HTML.
+
+### 4.4 Security headers
+
+These live in `nginx.conf.template`, with a copy in `public/_headers`:
+- CSP: `script-src 'self'`, and `connect-src 'self' https://generativelanguage.googleapis.com`.
+- HSTS, `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, COOP, Permissions-Policy.
+- The font is self-hosted, so no third-party hosts are needed.
 
 ---
 
-## 5. Runtime & deployment
+## 5. Runtime and deployment
 
-| Mode | How it's wired |
-|---|---|
-| Local dev | `uvicorn main:app --reload` on :8000, `npm run dev` on :5173. The Vite proxy forwards `/api` to :8000, so there is no CORS in the browser. |
-| Docker Compose | `db` (postgres:15-alpine, healthcheck) → `backend` (python:3.11-slim; runs `alembic upgrade head`, then uvicorn) → `frontend` (node:18 build, then nginx; serves the SPA and proxies `/api/` to `backend:8000`). `redis` also starts but nothing connects to it. `./backend/storage` and `./backend/logs` are bind-mounted. |
-| Hosted DB | Neon or Supabase are supported through the SSL detection in `session.py`. |
+See [DEPLOY.md](../DEPLOY.md).
 
-**Process model:** one uvicorn process. Pipeline runs are FastAPI `BackgroundTasks`
-inside that process, and progress is held in a Python dict. This model only works
-with **a single worker**, and all task state is lost on restart. See
-[decisions.md D-9](decisions.md#d-9-in-process-background-tasks--in-memory-task-store-instead-of-celery--redis).
+**Images:**
+- **Backend:** multi-stage build that runs as a non-root user and logs JSON. Migrations run as a separate release step.
+- **Frontend:** nginx, pointed at the API through `API_UPSTREAM`.
+
+**Compose:** `db` → `migrate` → `backend` (health-checked) → `frontend`.
 
 ---
 
-## 6. External dependencies
+## 6. External services
 
-| Service | Used for | Auth | Notes |
-|---|---|---|---|
-| Google Gemini (`gemini-2.5-flash`) | analysis and chat | API key | the only paid dependency |
-| Semantic Scholar Graph API | search | none (keyless) | keyless use is heavily rate-limited |
-| arXiv export API | search | none | Atom XML; query is sent as `all:{topic}` without quoting |
-| NCBI E-utilities (PubMed) | search | none | limited to 3 req/s without an API key; PubMed papers never have a `pdf_url` |
+| Service | Called by | Auth |
+|---|---|---|
+| Gemini API | the browser | the user's key |
+| Semantic Scholar, arXiv, PubMed | the server's collection job | none (keyless) |
+
+---
+
+## 7. Tests
+
+| Suite | Count | What it covers |
+|---|---|---|
+| **pytest** (`backend/tests`) | 135 | auth and sessions, ownership (IDOR) on every route, validation, collection job, SSRF guard, PDF extraction, analysis storage, chat, rate limits and quotas, config guards, migrations (upgrading legacy rows, round-tripping), observability |
+| **Vitest** (`frontend/src/**/*.test.*`) | 47 | Gemini adapter (request shape, SSE streaming, error mapping), generateJSON repair and truncation, retry, runAnalysis (resume, skip, fatal errors, concurrency, cancel), prompts and citations, chat context, Markdown sanitisation, polling rules, header parity |
+| **Playwright** (`frontend/e2e`) | 15 | real Chrome, real API, throwaway DB, Gemini stubbed at the network layer, paper search stubbed on the e2e server: sign-up with a key, a full run, rate-limit resume, chat, sessions, deletion, and **the key never appearing in any `/api` request** |
+
+**Opt-in live check:** `GEMINI_LIVE_KEY=… npx vitest run gemini.live` calls the real Gemini API.
