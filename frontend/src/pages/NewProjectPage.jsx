@@ -62,10 +62,11 @@ export default function NewProjectPage() {
       <div className="card-p mb-5">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="label">
+            <label htmlFor="project-topic" className="label">
               Research topic <span className="text-red-500">*</span>
             </label>
             <input
+              id="project-topic"
               type="text"
               className="input"
               placeholder="e.g. AI in Healthcare Diagnostics"
@@ -80,10 +81,11 @@ export default function NewProjectPage() {
           </div>
 
           <div>
-            <label className="label">
+            <label htmlFor="project-title" className="label">
               Project title <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <input
+              id="project-title"
               type="text"
               className="input"
               placeholder="Auto-generated from topic if left blank"
@@ -93,10 +95,11 @@ export default function NewProjectPage() {
           </div>
 
           <div>
-            <label className="label">
+            <label htmlFor="project-description" className="label">
               Description <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <textarea
+              id="project-description"
               className="input resize-none"
               rows={3}
               placeholder="Any additional context or scope…"

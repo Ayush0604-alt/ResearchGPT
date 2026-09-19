@@ -221,6 +221,7 @@ export default function ChatPage() {
           className="input flex-1 resize-none py-2.5 leading-snug"
           rows={1}
           placeholder="Ask a question about your papers…"
+          aria-label="Your question"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
@@ -228,6 +229,7 @@ export default function ChatPage() {
         />
         <button
           onClick={send}
+          aria-label="Send question"
           disabled={loading || !input.trim()}
           className="btn-primary flex-shrink-0 p-2.5"
         >

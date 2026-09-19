@@ -8,10 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css}\" \"*.{js,json}\"",
-    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css}\" \"*.{js,json}\"",
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css}\" \"e2e/**/*.ts\" \"*.{js,ts,json}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css}\" \"e2e/**/*.ts\" \"*.{js,ts,json}\"",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/outfit": "^5.3.0",
@@ -29,8 +30,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.20.4",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.0",

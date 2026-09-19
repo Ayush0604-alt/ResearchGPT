@@ -40,3 +40,7 @@ Thumbs.db
 *.pem
 *.key
 *.cert
+
+# Playwright
+test-results/
+playwright-report/

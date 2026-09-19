@@ -43,8 +43,11 @@ export default function RegisterPage() {
         <div className="card-p">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Username</label>
+              <label htmlFor="register-username" className="label">
+                Username
+              </label>
               <input
+                id="register-username"
                 type="text"
                 className="input"
                 placeholder="johndoe"
@@ -59,8 +62,11 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="label">Email address</label>
+              <label htmlFor="register-email" className="label">
+                Email address
+              </label>
               <input
+                id="register-email"
                 type="email"
                 className="input"
                 placeholder="you@example.com"
@@ -70,8 +76,11 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="label">Password</label>
+              <label htmlFor="register-password" className="label">
+                Password
+              </label>
               <input
+                id="register-password"
                 type="password"
                 className="input"
                 placeholder="Min. 8 characters"

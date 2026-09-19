@@ -44,8 +44,11 @@ export default function LoginPage() {
         <div className="card-p">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Email address</label>
+              <label htmlFor="login-email" className="label">
+                Email address
+              </label>
               <input
+                id="login-email"
                 type="email"
                 className="input"
                 placeholder="you@example.com"
@@ -56,8 +59,11 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="label">Password</label>
+              <label htmlFor="login-password" className="label">
+                Password
+              </label>
               <input
+                id="login-password"
                 type="password"
                 className="input"
                 placeholder="••••••••"
