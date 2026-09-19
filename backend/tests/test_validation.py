@@ -64,3 +64,17 @@ async def test_deactivated_user_token_is_rejected(client, make_user):
         await db.commit()
 
     assert (await client.get("/projects", headers=user["headers"])).status_code == 401
+
+
+async def test_blank_optional_fields_are_treated_as_missing(client, make_user):
+    """The New Project form sends '' for untouched optional fields."""
+    user = await make_user()
+    resp = await client.post(
+        "/projects",
+        json={"topic": "graph neural networks", "title": "", "description": "   "},
+        headers=user["headers"],
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["title"] == "Research: graph neural networks"
+    assert body["description"] is None

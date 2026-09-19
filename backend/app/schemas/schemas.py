@@ -65,6 +65,14 @@ class ProjectCreate(BaseModel):
     title: Optional[Title] = None
     description: Optional[Description] = None
 
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def _blank_is_missing(cls, v):
+        # Forms send "" for untouched optional inputs.
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 class ProjectOut(BaseModel):
     id: int
