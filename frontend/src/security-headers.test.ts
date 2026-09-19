@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 const root = resolve(__dirname, '..')
 
 function nginxHeaders(): Record<string, string> {
-  const conf = readFileSync(resolve(root, 'nginx.conf'), 'utf-8')
+  const conf = readFileSync(resolve(root, 'nginx.conf.template'), 'utf-8')
   return Object.fromEntries(
     [...conf.matchAll(/add_header\s+([\w-]+)\s+"([^"]+)"\s+always;/g)].map((m) => [m[1], m[2]]),
   )

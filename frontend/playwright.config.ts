@@ -12,6 +12,10 @@ const python =
   (process.platform === 'win32' ? path.join(backendDir, 'venv', 'Scripts', 'python.exe') : 'python')
 const e2eServer = path.join(backendDir, 'scripts', 'e2e_server.py')
 
+// E2E_BASE_URL=https://… runs the specs against an existing deployment instead
+// of starting local servers (only specs that don't need stubbed paper search).
+const external = process.env.E2E_BASE_URL
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -19,25 +23,27 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: `http://127.0.0.1:${WEB_PORT}`,
+    baseURL: external ?? `http://127.0.0.1:${WEB_PORT}`,
     // Local runs reuse installed Chrome; CI installs Playwright's Chromium.
     ...devices['Desktop Chrome'],
     channel: process.env.CI ? undefined : 'chrome',
     trace: 'retain-on-failure',
   },
-  webServer: [
-    {
-      command: `"${python}" "${e2eServer}" --port ${API_PORT}`,
-      url: `http://127.0.0.1:${API_PORT}/health`,
-      timeout: 120_000,
-      reuseExistingServer: false,
-    },
-    {
-      command: `npx vite --port ${WEB_PORT} --strictPort --host 127.0.0.1`,
-      url: `http://127.0.0.1:${WEB_PORT}`,
-      env: { API_PROXY_TARGET: `http://127.0.0.1:${API_PORT}` },
-      timeout: 120_000,
-      reuseExistingServer: false,
-    },
-  ],
+  webServer: external
+    ? []
+    : [
+        {
+          command: `"${python}" "${e2eServer}" --port ${API_PORT}`,
+          url: `http://127.0.0.1:${API_PORT}/health`,
+          timeout: 120_000,
+          reuseExistingServer: false,
+        },
+        {
+          command: `npx vite --port ${WEB_PORT} --strictPort --host 127.0.0.1`,
+          url: `http://127.0.0.1:${WEB_PORT}`,
+          env: { API_PROXY_TARGET: `http://127.0.0.1:${API_PORT}` },
+          timeout: 120_000,
+          reuseExistingServer: false,
+        },
+      ],
 })
