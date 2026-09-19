@@ -16,9 +16,12 @@ interface LLMSettingsState {
   extractModel: string
   /** Stronger model for the review synthesis and chat. */
   synthModel: string
+  /** Send the paper PDF itself when the provider can read it (tables, figures). */
+  sendPdfs: boolean
   setKey: (apiKey: string) => void
   markVerified: (models: ModelInfo[]) => void
   setModels: (models: { extractModel?: string; synthModel?: string }) => void
+  setSendPdfs: (sendPdfs: boolean) => void
   clear: () => void
 }
 
@@ -39,6 +42,7 @@ const initial = {
   models: [] as ModelInfo[],
   extractModel: DEFAULT_MODEL,
   synthModel: DEFAULT_MODEL,
+  sendPdfs: true,
 }
 
 export const useLLMSettings = create<LLMSettingsState>()(
@@ -54,6 +58,7 @@ export const useLLMSettings = create<LLMSettingsState>()(
           synthModel: pickDefault(models, s.synthModel),
         })),
       setModels: (models) => set(models),
+      setSendPdfs: (sendPdfs) => set({ sendPdfs }),
       clear: () => set(initial),
     }),
     { name: 'researchgpt-llm' },

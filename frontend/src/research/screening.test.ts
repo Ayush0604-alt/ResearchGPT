@@ -19,6 +19,7 @@ function provider(answer: (req: CompletionRequest) => unknown) {
     label: 'Fake',
     keyUrl: '',
     apiHost: '',
+    acceptsPdf: false,
     listModels: async () => [],
     stream: async function* () {},
     complete: async (req) => {

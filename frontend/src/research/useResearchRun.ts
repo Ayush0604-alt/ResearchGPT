@@ -7,6 +7,7 @@ import { errorMessage, papersAPI, projectsAPI } from '../services/api'
 import { invalidateProjectResults, keys } from '../services/queries'
 import type { Project } from '../services/types'
 import { useLLMSettings } from '../store/llmSettings'
+import { MAX_PDF_BYTES, toBase64 } from './pdf'
 import { runAnalysis, RunError, type AnalysisAPI } from './runAnalysis'
 import { planQueries, screenCandidates, selectPapers, snowballSeeds } from './screening'
 
@@ -95,6 +96,12 @@ export function useResearchRun(projectId: string) {
       synthModel: settings.synthModel,
       api: analysisAPI,
       signal,
+      fetchPdf: settings.sendPdfs
+        ? async (paperId) => {
+            const { data } = await papersAPI.pdf(projectId, paperId)
+            return data.byteLength <= MAX_PDF_BYTES ? toBase64(data) : null
+          }
+        : undefined,
       onProgress: (p) => setState(p.phase === 'writing' ? { ...IDLE, phase: 'writing' } : { ...p }),
     })
     const notes = [

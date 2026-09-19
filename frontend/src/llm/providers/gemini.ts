@@ -84,7 +84,10 @@ function requestBody(req: CompletionRequest) {
   return {
     contents: req.messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.text }],
+      parts: [
+        ...(m.files ?? []).map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } })),
+        { text: m.text },
+      ],
     })),
     ...(req.system ? { systemInstruction: { parts: [{ text: req.system }] } } : {}),
     generationConfig: {
@@ -151,6 +154,7 @@ export const gemini: LLMProvider = {
   label: 'Google Gemini',
   keyUrl: 'https://aistudio.google.com/app/apikey',
   apiHost: GEMINI_HOST,
+  acceptsPdf: true,
 
   async listModels(apiKey, signal) {
     const models: ModelInfo[] = []

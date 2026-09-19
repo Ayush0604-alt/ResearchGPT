@@ -114,6 +114,7 @@ describe('gemini.complete', () => {
     const body = JSON.parse(init.body)
     expect(body.contents.map((c: { role: string }) => c.role)).toEqual(['user', 'model'])
     expect(body.systemInstruction.parts[0].text).toBe('Be brief.')
+    expect(body.contents[0].parts).toEqual([{ text: 'hi' }])
     expect(body.generationConfig.responseMimeType).toBe('application/json')
     expect(body.generationConfig.responseSchema.type).toBe('OBJECT')
     expect(result).toEqual({
@@ -177,5 +178,26 @@ describe('gemini.stream', () => {
     const out: string[] = []
     for await (const t of gemini.stream({ apiKey: KEY, model: 'm', messages: [] })) out.push(t)
     expect(out).toEqual(['a', 'b'])
+  })
+})
+
+describe('gemini attachments', () => {
+  it('sends PDFs as inline data before the text', async () => {
+    const fetchMock = mockFetch(
+      json({ candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] }),
+    )
+    await gemini.complete({
+      apiKey: KEY,
+      model: 'm',
+      messages: [
+        { role: 'user', text: 'read this', files: [{ mimeType: 'application/pdf', data: 'QUJD' }] },
+      ],
+    })
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.contents[0].parts).toEqual([
+      { inlineData: { mimeType: 'application/pdf', data: 'QUJD' } },
+      { text: 'read this' },
+    ])
+    expect(gemini.acceptsPdf).toBe(true)
   })
 })

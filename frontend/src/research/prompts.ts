@@ -74,10 +74,16 @@ export function trimText(text: string, max = MAX_PAPER_CHARS): string {
   return text.length <= max ? text : `${text.slice(0, max)}\n[…text truncated]`
 }
 
-export function extractionPrompt(topic: string, paper: PaperForAnalysis): string {
-  const body = paper.full_text
-    ? `Full text:\n${trimText(paper.full_text)}`
-    : 'Full text: not available (only the abstract).'
+export function extractionPrompt(
+  topic: string,
+  paper: PaperForAnalysis,
+  { pdfAttached = false } = {},
+): string {
+  const body = pdfAttached
+    ? 'Full text: the complete paper is attached as a PDF. Use its tables and figures too.'
+    : paper.full_text
+      ? `Full text:\n${trimText(paper.full_text)}`
+      : 'Full text: not available (only the abstract).'
   return [
     `Research topic: ${topic}`,
     '',

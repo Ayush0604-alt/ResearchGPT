@@ -25,6 +25,7 @@ function fakeProvider(...replies: (Completion | Error)[]) {
     label: 'Fake',
     keyUrl: '',
     apiHost: '',
+    acceptsPdf: false,
     listModels: async () => [],
     stream: async function* () {},
     complete: vi.fn(async (req: CompletionRequest) => {

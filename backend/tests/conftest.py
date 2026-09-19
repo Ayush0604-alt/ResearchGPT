@@ -147,5 +147,11 @@ def _no_real_paper_apis(monkeypatch):
     async def refuse(*args, **kwargs):
         raise AssertionError("Test tried to call a real paper API; install a fake.")
 
-    for name in ("default_search", "default_candidates", "default_fetch_text"):
+    for name in (
+        "default_search",
+        "default_candidates",
+        "default_neighbours",
+        "default_fetch_text",
+        "default_fetch_pdf",
+    ):
         monkeypatch.setattr(collection_service, name, refuse)

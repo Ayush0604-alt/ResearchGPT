@@ -180,6 +180,7 @@ class PaperForAnalysis(BaseModel):
     abstract: Optional[str] = None
     full_text: Optional[str] = None
     url: Optional[str] = None
+    has_pdf: bool = False
     has_extraction: bool = False
 
 

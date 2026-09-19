@@ -34,6 +34,7 @@ function geminiResponse(body: unknown) {
 async function stubGemini(page: Page) {
   let mode: Mode = 'ok'
   let extractions = 0
+  const pdfExtractions: string[] = []
   await page.route('https://generativelanguage.googleapis.com/**', async (route: Route) => {
     const request = route.request()
     if (request.headers()['x-goog-api-key'] !== KEY) {
@@ -104,6 +105,8 @@ async function stubGemini(page: Page) {
       })
     }
     extractions += 1
+    const inline = body.contents[0].parts.find((p: { inlineData?: unknown }) => p.inlineData)
+    if (inline) pdfExtractions.push(inline.inlineData.mimeType)
     if (mode === 'rate-limited' && extractions > 1) {
       return route.fulfill({
         status: 429,
@@ -112,7 +115,7 @@ async function stubGemini(page: Page) {
     }
     return route.fulfill({ json: geminiResponse(EXTRACTION) })
   })
-  return { setMode: (m: Mode) => (mode = m) }
+  return { setMode: (m: Mode) => (mode = m), pdfExtractions }
 }
 
 async function signUpWithKey(page: Page) {
@@ -292,4 +295,14 @@ test('following citations adds papers the best matches cite', async ({ page }) =
   await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText(/^4 papers ·/)).toBeVisible()
   await expect(page.getByText('A Foundational Paper on Graph Attention')).toBeVisible()
+})
+
+test('papers with a PDF are sent to the model as the PDF itself', async ({ page }) => {
+  const gemini = await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'pdf reading')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+  // Two of the three stub papers have a PDF link.
+  expect(gemini.pdfExtractions).toEqual(['application/pdf', 'application/pdf'])
 })

@@ -142,3 +142,38 @@ async def test_result_payloads_are_bounded(client, make_user, make_project, path
     )
     resp = await client.put(path, json=payload, headers=user["headers"])
     assert resp.status_code == 422
+
+
+async def test_pdf_is_proxied_for_the_browser(client, make_user, make_project, monkeypatch):
+    from app.services import collection_service
+
+    fetched = []
+
+    async def fetch_pdf(url):
+        fetched.append(url)
+        return b"%PDF-1.4 fake pdf" if url.endswith("ok.pdf") else None
+
+    monkeypatch.setattr(collection_service, "default_fetch_pdf", fetch_pdf)
+    user, pid, (with_pdf, without_pdf) = await _collected_project(make_user, make_project)
+    async with AsyncSessionLocal() as db:
+        paper = await db.get(Paper, with_pdf)
+        paper.pdf_url = "https://example.org/ok.pdf"
+        await db.commit()
+    h = user["headers"]
+
+    ok = await client.get(f"/papers/{pid}/{with_pdf}/pdf", headers=h)
+    assert ok.status_code == 200
+    assert ok.headers["content-type"] == "application/pdf"
+    assert ok.headers["cache-control"] == "no-store"
+    assert ok.content.startswith(b"%PDF")
+    assert (await client.get(f"/papers/{pid}/{without_pdf}/pdf", headers=h)).status_code == 404
+
+    texts = (await client.get(f"/papers/{pid}/texts", headers=h)).json()
+    assert [t["has_pdf"] for t in texts] == [True, False]
+
+    # Another user can't use the proxy for someone else's paper.
+    other = await make_user()
+    assert (
+        await client.get(f"/papers/{pid}/{with_pdf}/pdf", headers=other["headers"])
+    ).status_code == 404
+    assert fetched == ["https://example.org/ok.pdf"]

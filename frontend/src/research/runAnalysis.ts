@@ -43,6 +43,8 @@ export interface AnalysisDeps {
   signal: AbortSignal
   onProgress: (progress: AnalysisProgress) => void
   concurrency?: number
+  /** Base64 PDF for a paper, or null. Set only when PDFs should go to the model. */
+  fetchPdf?: (paperId: number) => Promise<string | null>
 }
 
 export interface AnalysisResult {
@@ -107,18 +109,40 @@ export async function runAnalysis(
     todo,
     deps.concurrency ?? 3,
     async (paper) => {
-      try {
-        const { data } = await generateJSON(provider, {
+      const extract = (pdf: string | null) =>
+        generateJSON(provider, {
           apiKey,
           model: deps.extractModel,
           system: EXTRACTION_SYSTEM,
-          messages: [{ role: 'user', text: extractionPrompt(topic, paper) }],
+          messages: [
+            {
+              role: 'user',
+              text: extractionPrompt(topic, paper, { pdfAttached: Boolean(pdf) }),
+              files: pdf ? [{ mimeType: 'application/pdf', data: pdf }] : undefined,
+            },
+          ],
           schema: ExtractionSchema,
           maxOutputTokens: 4096,
           temperature: 0.2,
           signal,
         })
-        await api.saveExtraction(projectId, paper.id, { ...data, model: deps.extractModel })
+      try {
+        const pdf =
+          provider.acceptsPdf && paper.has_pdf && deps.fetchPdf
+            ? await deps.fetchPdf(paper.id).catch(() => null)
+            : null
+        let result
+        try {
+          result = await extract(pdf)
+        } catch (err) {
+          // The model couldn't use the PDF (unsupported, too long…): fall back to text.
+          if (!pdf || isFatal(err)) throw err
+          result = await extract(null)
+        }
+        await api.saveExtraction(projectId, paper.id, {
+          ...result.data,
+          model: deps.extractModel,
+        })
       } catch (err) {
         if (isFatal(err)) throw err
         failed += 1 // one unreadable paper shouldn't sink the run

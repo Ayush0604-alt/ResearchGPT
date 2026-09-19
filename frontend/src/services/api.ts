@@ -116,6 +116,9 @@ export const projectsAPI = {
 export const papersAPI = {
   list: (pid: number | string) => api.get<Paper[]>(`/papers/${pid}`),
   texts: (pid: number | string) => api.get<PaperForAnalysis[]>(`/papers/${pid}/texts`),
+  /** The paper's PDF, proxied by the server (for sending to the model). */
+  pdf: (pid: number | string, paperId: number) =>
+    api.get<ArrayBuffer>(`/papers/${pid}/${paperId}/pdf`, { responseType: 'arraybuffer' }),
   summaries: (pid: number | string) => api.get<PaperSummary[]>(`/papers/${pid}/summaries`),
   findings: (pid: number | string) => api.get<PaperFindings[]>(`/papers/${pid}/findings`),
 }

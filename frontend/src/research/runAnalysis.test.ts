@@ -34,6 +34,7 @@ function paper(id: number, extra: Partial<PaperForAnalysis> = {}): PaperForAnaly
     abstract: 'Abstract',
     full_text: null,
     url: null,
+    has_pdf: false,
     has_extraction: false,
     ...extra,
   }
@@ -47,6 +48,7 @@ function fakeProvider(onExtract?: (req: CompletionRequest) => unknown) {
     label: 'Fake',
     keyUrl: '',
     apiHost: '',
+    acceptsPdf: false,
     listModels: async () => [],
     stream: async function* () {},
     complete: async (req) => {
@@ -201,5 +203,56 @@ describe('prompts', () => {
       text: 'A [P1] B [P3]',
       unknown: [2],
     })
+  })
+})
+
+describe('PDF attachments', () => {
+  function pdfProvider(onExtract: (req: CompletionRequest) => unknown) {
+    const { provider, calls } = fakeProvider(onExtract)
+    return { provider: { ...provider, acceptsPdf: true }, calls }
+  }
+  const extractions = (calls: CompletionRequest[]) =>
+    calls.filter((c) => !c.system?.includes('literature reviews'))
+
+  it('attaches the PDF when the paper has one and the provider reads PDFs', async () => {
+    const { provider, calls } = pdfProvider(() => EXTRACTION)
+    const api = fakeAPI([paper(1, { has_pdf: true }), paper(2)])
+    const fetchPdf = vi.fn(async () => 'UERGLWJhc2U2NA==')
+
+    await runAnalysis(7, 't', { ...deps(provider, api), fetchPdf })
+
+    expect(fetchPdf).toHaveBeenCalledWith(1)
+    // Requests run concurrently, so find each paper's request by its id.
+    const byPaper = (id: number) =>
+      extractions(calls).find((c) => c.messages[0].text.includes(`<paper id="P${id}">`))!
+    const [withPdf, withoutPdf] = [byPaper(1), byPaper(2)]
+    expect(withPdf.messages[0].files).toEqual([
+      { mimeType: 'application/pdf', data: 'UERGLWJhc2U2NA==' },
+    ])
+    expect(withPdf.messages[0].text).toContain('attached as a PDF')
+    expect(withoutPdf.messages[0].files).toBeUndefined()
+  })
+
+  it('falls back to the text when the model rejects the PDF', async () => {
+    const { provider, calls } = pdfProvider((req) => {
+      if (req.messages[0].files) throw new LLMError('Unsupported file', 400)
+      return EXTRACTION
+    })
+    const api = fakeAPI([paper(1, { has_pdf: true, full_text: 'the text' })])
+
+    const result = await runAnalysis(7, 't', { ...deps(provider, api), fetchPdf: async () => 'x' })
+
+    expect(result.failedPapers).toBe(0)
+    expect(extractions(calls).map((c) => Boolean(c.messages[0].files))).toEqual([true, false])
+  })
+
+  it('never fetches PDFs for providers that cannot read them', async () => {
+    const { provider } = fakeProvider()
+    const fetchPdf = vi.fn(async () => 'x')
+    await runAnalysis(7, 't', {
+      ...deps(provider, fakeAPI([paper(1, { has_pdf: true })])),
+      fetchPdf,
+    })
+    expect(fetchPdf).not.toHaveBeenCalled()
   })
 })

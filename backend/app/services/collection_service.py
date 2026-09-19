@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.models import LiteratureReview, Paper, ProjectStatus, ResearchProject
 from app.services.search import search_papers, snowball
-from app.utils.pdf_text import extract_pdf_text
+from app.utils.pdf_text import extract_pdf_text, looks_like_pdf
 from app.utils.safe_http import USER_AGENT, fetch_public
 
 HEARTBEAT_EVERY = timedelta(seconds=15)
@@ -133,6 +133,22 @@ async def default_candidates(
 async def default_neighbours(dois: List[str], limit: int) -> List[Dict[str, Any]]:
     """Citation neighbours for snowballing. Module-level so tests can patch it."""
     return list(await snowball(dois, limit))
+
+
+async def default_fetch_pdf(url: str) -> Optional[bytes]:
+    """Download a PDF for the browser to send to the model (never stored).
+    Module-level so tests can patch it."""
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0), headers={"User-Agent": USER_AGENT}
+    ) as client:
+        try:
+            data, _ = await fetch_public(
+                client, url, max_bytes=settings.MAX_PDF_SIZE_MB * 1024 * 1024
+            )
+        except Exception as exc:
+            logger.info(f"[PDF] Not available {url[:120]}: {type(exc).__name__}")
+            return None
+    return data if looks_like_pdf(data) else None
 
 
 async def default_fetch_text(client: httpx.AsyncClient, url: str) -> Optional[str]:

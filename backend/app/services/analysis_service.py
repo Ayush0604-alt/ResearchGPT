@@ -53,6 +53,7 @@ async def papers_for_analysis(db: AsyncSession, project_id: int) -> list[PaperFo
             abstract=p.abstract,
             full_text=p.full_text,
             url=p.url,
+            has_pdf=bool(p.pdf_url),
             has_extraction=p.id in extracted,
         )
         for p in papers

@@ -150,6 +150,20 @@ export default function SettingsPage() {
             </p>
           </div>
           <div>
+            <label className="flex items-start gap-2 text-sm text-gray-700 mb-4">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={settings.sendPdfs}
+                onChange={(e) => settings.setSendPdfs(e.target.checked)}
+              />
+              <span>
+                Send the full PDF to the model when available
+                <span className="block text-xs text-gray-400">
+                  Reads tables, figures and equations too. Uses more tokens than text.
+                </span>
+              </span>
+            </label>
             <label htmlFor="llm-synth-model" className="label">
               Model for the review and chat
             </label>

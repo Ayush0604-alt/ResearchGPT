@@ -126,6 +126,13 @@ def use_fake_sources() -> None:
         ]
 
     collection_service.default_candidates = candidates
+
+    async def fetch_pdf(url):
+        from tests.pdf_fixture import make_pdf
+
+        return make_pdf([f"Full text of {url}"])
+
+    collection_service.default_fetch_pdf = fetch_pdf
     collection_service.default_neighbours = neighbours
     collection_service.default_fetch_text = fetch_text
 

@@ -75,6 +75,7 @@ export interface PaperForAnalysis {
   abstract: string | null
   full_text: string | null
   url: string | null
+  has_pdf: boolean
   has_extraction: boolean
 }
 

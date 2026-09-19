@@ -40,9 +40,17 @@ export class LLMError extends Error {
   }
 }
 
+export interface Attachment {
+  mimeType: 'application/pdf'
+  /** Base64-encoded bytes. */
+  data: string
+}
+
 export interface ChatTurn {
   role: 'user' | 'assistant'
   text: string
+  /** Files sent with the message (only to providers with acceptsPdf). */
+  files?: Attachment[]
 }
 
 export interface CompletionRequest {
@@ -76,6 +84,8 @@ export interface LLMProvider {
   keyUrl: string
   /** Domain the key is sent to (shown to users and allowed by the CSP). */
   apiHost: string
+  /** Can read PDF attachments directly (tables, figures, equations survive). */
+  acceptsPdf: boolean
   listModels(apiKey: string, signal?: AbortSignal): Promise<ModelInfo[]>
   /** One request, no retries (see generate.ts for retries and validation). */
   complete(req: CompletionRequest): Promise<Completion>
