@@ -13,6 +13,9 @@ const paper = (id: number): Paper => ({
   source: 'arxiv',
   status: 'processed',
   has_full_text: false,
+  doi: null,
+  relevance_score: null,
+  relevance_reason: null,
   created_at: '',
 })
 

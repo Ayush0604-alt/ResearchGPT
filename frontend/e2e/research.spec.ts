@@ -21,7 +21,7 @@ const EXTRACTION = {
   key_quotes: ['we observe consistent gains'],
 }
 
-type Mode = 'ok' | 'rate-limited' | 'chat-down'
+type Mode = 'ok' | 'rate-limited' | 'chat-down' | 'one-irrelevant'
 
 function geminiResponse(body: unknown) {
   return {
@@ -72,6 +72,23 @@ async function stubGemini(page: Page) {
       })
     }
 
+    if (system.includes('search academic databases')) {
+      return route.fulfill({
+        json: geminiResponse({ queries: ['graph neural networks', 'molecular graph learning'] }),
+      })
+    }
+    if (system.includes('You screen papers')) {
+      const ids = [...prompt.matchAll(/<paper id="C(\d+)">/g)].map((m) => Number(m[1]))
+      return route.fulfill({
+        json: geminiResponse({
+          ratings: ids.map((id) => ({
+            id,
+            score: mode === 'one-irrelevant' && id === 1 ? 1 : 8,
+            reason: id === 1 && mode === 'one-irrelevant' ? 'Off topic' : 'Directly on topic',
+          })),
+        }),
+      })
+    }
     if (system.includes('literature reviews')) {
       const ids = [...prompt.matchAll(/<paper id="P(\d+)">/g)].map((m) => m[1])
       return route.fulfill({
@@ -226,4 +243,37 @@ test('a failed chat answer keeps the question and stores nothing', async ({ page
 
   await page.reload()
   await expect(page.getByText('Ask anything about your papers')).toBeVisible()
+})
+
+test('screening keeps only relevant papers and shows why', async ({ page }) => {
+  const gemini = await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'graph screening')
+
+  gemini.setMode('one-irrelevant')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+
+  // 3 candidates were found; the one rated 1/10 was not collected.
+  await expect(page.getByText(/^2 papers ·/)).toBeVisible()
+  await expect(page.getByText('Relevance 8/10')).toHaveCount(2)
+  await page.getByRole('button', { name: /Graph Transformers for Molecular/ }).click()
+  await expect(page.getByText('Directly on topic')).toBeVisible()
+})
+
+test('search filters are saved with the project', async ({ page }) => {
+  await stubGemini(page)
+  await signUpWithKey(page)
+  await page.goto('/project/new')
+  await page.getByLabel(/Research topic/).fill('filtered topic')
+  await page.getByText('Search filters').click()
+  await page.getByLabel('From year').fill('2020')
+  await page.getByLabel('arXiv').uncheck()
+  const created = page.waitForResponse(
+    (r) => r.url().endsWith('/api/projects') && r.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Create project' }).click()
+  const body = await (await created).json()
+  expect(body.year_from).toBe(2020)
+  expect(body.sources).toEqual(['semantic_scholar', 'openalex', 'europepmc'])
 })

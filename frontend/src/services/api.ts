@@ -10,7 +10,9 @@ import type {
   PaperFindings,
   PaperForAnalysis,
   PaperSummary,
+  Candidate,
   Project,
+  SourceName,
   ProjectList,
   User,
 } from './types'
@@ -78,13 +80,28 @@ export const authAPI = {
 // ── Projects ──────────────────────────────────────────────────────────────────
 export const projectsAPI = {
   list: () => api.get<ProjectList>('/projects'),
-  create: (data: { topic: string; title?: string; description?: string }) =>
-    api.post<Project>('/projects', data),
+  create: (data: {
+    topic: string
+    title?: string
+    description?: string
+    year_from?: number
+    year_to?: number
+    sources?: SourceName[]
+  }) => api.post<Project>('/projects', data),
   get: (id: number | string) => api.get<Project>(`/projects/${id}`),
   delete: (id: number | string) => api.delete(`/projects/${id}`),
-  /** Start the server job that searches for papers and reads their PDFs. */
-  collect: (id: number | string, maxPapers = 10) =>
-    api.post<Project>(`/projects/${id}/collect`, { max_papers: maxPapers }),
+  /** Search every source with the topic plus planned queries; returns candidates. */
+  search: (id: number | string, queries: string[]) =>
+    api.post<{ candidates: Candidate[] }>(`/projects/${id}/search`, { queries }),
+  /** Start the server job that reads the chosen papers' PDFs. */
+  collect: (
+    id: number | string,
+    body: {
+      max_papers?: number
+      candidate_ids?: number[]
+      relevance?: { id: number; score: number; reason: string }[]
+    } = {},
+  ) => api.post<Project>(`/projects/${id}/collect`, { max_papers: 10, ...body }),
   saveExtraction: (id: number | string, paperId: number, data: PaperExtractionIn) =>
     api.put(`/projects/${id}/papers/${paperId}/extraction`, data),
   saveAnalysis: (id: number | string, data: AnalysisIn) =>

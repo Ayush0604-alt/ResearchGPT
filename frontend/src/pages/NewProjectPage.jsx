@@ -5,6 +5,13 @@ import toast from 'react-hot-toast'
 import { errorMessage } from '../services/api'
 import { useCreateProject } from '../services/queries'
 
+const SOURCES = [
+  ['semantic_scholar', 'Semantic Scholar'],
+  ['openalex', 'OpenAlex'],
+  ['arxiv', 'arXiv'],
+  ['europepmc', 'Europe PMC'],
+]
+
 const EXAMPLES = [
   'AI in Healthcare Diagnostics',
   'Large Language Models for Code Generation',
@@ -17,7 +24,14 @@ const EXAMPLES = [
 ]
 
 export default function NewProjectPage() {
-  const [form, setForm] = useState({ topic: '', title: '', description: '' })
+  const [form, setForm] = useState({
+    topic: '',
+    title: '',
+    description: '',
+    year_from: '',
+    year_to: '',
+    sources: SOURCES.map(([value]) => value),
+  })
   const createProject = useCreateProject()
   const loading = createProject.isPending
   const navigate = useNavigate()
@@ -29,8 +43,15 @@ export default function NewProjectPage() {
     // Send optional fields only when filled in.
     const title = form.title.trim() || undefined
     const description = form.description.trim() || undefined
+    if (form.sources.length === 0) return toast.error('Choose at least one source')
+    const filters = {
+      year_from: form.year_from ? Number(form.year_from) : undefined,
+      year_to: form.year_to ? Number(form.year_to) : undefined,
+      // Omitted when all are chosen, so new sources are included automatically.
+      sources: form.sources.length === SOURCES.length ? undefined : form.sources,
+    }
     createProject.mutate(
-      { topic, title, description },
+      { topic, title, description, ...filters },
       {
         onSuccess: (project) => {
           toast.success('Project created')
@@ -107,6 +128,68 @@ export default function NewProjectPage() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </div>
+
+          <details className="rounded-lg border border-gray-200 px-4 py-3">
+            <summary className="text-sm text-gray-600 cursor-pointer">
+              Search filters <span className="text-gray-400">(optional)</span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label htmlFor="project-year-from" className="label">
+                    From year
+                  </label>
+                  <input
+                    id="project-year-from"
+                    type="number"
+                    min={1900}
+                    max={2100}
+                    className="input"
+                    placeholder="Any"
+                    value={form.year_from}
+                    onChange={(e) => setForm({ ...form, year_from: e.target.value })}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label htmlFor="project-year-to" className="label">
+                    To year
+                  </label>
+                  <input
+                    id="project-year-to"
+                    type="number"
+                    min={1900}
+                    max={2100}
+                    className="input"
+                    placeholder="Any"
+                    value={form.year_to}
+                    onChange={(e) => setForm({ ...form, year_to: e.target.value })}
+                  />
+                </div>
+              </div>
+              <fieldset>
+                <legend className="label">Sources</legend>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {SOURCES.map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-1.5 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={form.sources.includes(value)}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            sources: e.target.checked
+                              ? [...form.sources, value]
+                              : form.sources.filter((s) => s !== value),
+                          })
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          </details>
 
           <div className="pt-1">
             <button type="submit" className="btn-primary w-full py-2.5" disabled={loading}>

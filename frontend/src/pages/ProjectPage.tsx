@@ -24,6 +24,8 @@ import { useHasVerifiedKey, useLLMSettings } from '../store/llmSettings'
 const SOURCE_LABELS: Record<string, string> = {
   arxiv: 'arXiv',
   semantic_scholar: 'Semantic Scholar',
+  openalex: 'OpenAlex',
+  europepmc: 'Europe PMC',
   pubmed: 'PubMed',
 }
 
@@ -71,7 +73,16 @@ function ProgressCard({ project, run }: { project: Project; run: RunState }) {
   const models = useLLMSettings()
   let percent: number | null
   let label: string
-  if (run.phase === 'extracting') {
+  if (run.phase === 'planning') {
+    percent = null
+    label = `Planning search queries with ${models.extractModel}…`
+  } else if (run.phase === 'searching') {
+    percent = null
+    label = 'Searching Semantic Scholar, OpenAlex, arXiv and Europe PMC…'
+  } else if (run.phase === 'screening') {
+    percent = run.total ? Math.round((100 * run.done) / run.total) : 0
+    label = `Checking relevance: ${run.done} of ${run.total} results`
+  } else if (run.phase === 'extracting') {
     percent = run.total ? Math.round((100 * run.done) / run.total) : 0
     label =
       `Reading papers with ${models.extractModel}: ${run.done} of ${run.total}` +
@@ -83,7 +94,7 @@ function ProgressCard({ project, run }: { project: Project; run: RunState }) {
     percent = project.progress
     label = project.current_step || 'Collecting papers…'
   }
-  const inBrowser = run.phase === 'extracting' || run.phase === 'writing'
+  const inBrowser = ['planning', 'screening', 'extracting', 'writing'].includes(run.phase)
 
   return (
     <div className="card-p" aria-live="polite">
@@ -125,6 +136,7 @@ function PaperDetails({
 }) {
   const authors = parseAuthors(paper.authors)
   const rows: [string, string | null | undefined][] = [
+    ['Why included', paper.relevance_reason],
     ['Summary', summary?.summary],
     ['Method', summary?.methodology],
     ['Models', findings?.model_used],
@@ -190,7 +202,7 @@ export default function ProjectPage() {
       !confirm('Search for papers again? This replaces the current papers and review.')
     )
       return
-    run.start()
+    run.start(project.topic)
   }
 
   const actions = () => {
@@ -312,6 +324,14 @@ export default function ProjectPage() {
                         <span className="text-xs text-gray-400">
                           {paper.has_full_text ? 'Full text' : 'Abstract only'}
                         </span>
+                        {paper.relevance_score !== null && (
+                          <span
+                            className="text-xs text-gray-500"
+                            title={paper.relevance_reason ?? undefined}
+                          >
+                            Relevance {paper.relevance_score}/10
+                          </span>
+                        )}
                         {summaryBy.has(paper.id) && (
                           <span className="text-xs text-green-600">Analysed</span>
                         )}

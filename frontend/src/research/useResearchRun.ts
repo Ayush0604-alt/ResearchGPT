@@ -8,8 +8,10 @@ import { invalidateProjectResults, keys } from '../services/queries'
 import type { Project } from '../services/types'
 import { useLLMSettings } from '../store/llmSettings'
 import { runAnalysis, RunError, type AnalysisAPI } from './runAnalysis'
+import { planQueries, screenCandidates, selectPapers } from './screening'
 
-export type RunPhase = 'idle' | 'collecting' | 'extracting' | 'writing'
+export type RunPhase =
+  'idle' | 'planning' | 'searching' | 'screening' | 'collecting' | 'extracting' | 'writing'
 
 export interface RunState {
   phase: RunPhase
@@ -50,7 +52,8 @@ export function useResearchRun(projectId: string) {
   const qc = useQueryClient()
   const [state, setState] = useState<RunState>(IDLE)
   const controller = useRef<AbortController | null>(null)
-  const analysing = state.phase === 'extracting' || state.phase === 'writing'
+  // Phases that run in this tab with the user's key (closing the tab stops them).
+  const analysing = ['planning', 'screening', 'extracting', 'writing'].includes(state.phase)
 
   // Closing the tab stops the analysis; ask first.
   useEffect(() => {
@@ -75,11 +78,16 @@ export function useResearchRun(projectId: string) {
     }
   }
 
-  async function analyse(topic: string, signal: AbortSignal) {
+  function keySettings() {
     const settings = useLLMSettings.getState()
     if (!settings.verified || !settings.apiKey) {
       throw new RunError('Add your API key in Settings to run the analysis.')
     }
+    return settings
+  }
+
+  async function analyse(topic: string, signal: AbortSignal) {
+    const settings = keySettings()
     const result = await runAnalysis(Number(projectId), topic, {
       provider: getProvider(settings.provider),
       apiKey: settings.apiKey,
@@ -110,11 +118,48 @@ export function useResearchRun(projectId: string) {
     }
   }
 
-  /** Collect papers on the server, then analyse them here. */
-  const start = (maxPapers = 10) =>
+  /** Plan queries, search, screen for relevance, collect the chosen papers on
+   *  the server, then analyse them here. */
+  const start = (topic: string, maxPapers = 10) =>
     track(async (signal) => {
+      const settings = keySettings()
+      const deps = {
+        provider: getProvider(settings.provider),
+        apiKey: settings.apiKey,
+        model: settings.extractModel,
+        signal,
+      }
+
+      setState({ ...IDLE, phase: 'planning' })
+      let queries: string[] = []
+      try {
+        queries = await planQueries(topic, deps)
+      } catch (err) {
+        // A failed plan isn't fatal: the topic itself is still searched.
+        if (err instanceof InvalidKeyError || err instanceof RateLimitError || isAbort(err)) {
+          throw err
+        }
+      }
+
+      setState({ ...IDLE, phase: 'searching' })
+      const { candidates } = (await projectsAPI.search(projectId, queries)).data
+      if (candidates.length === 0) {
+        throw new RunError(
+          'No papers with abstracts were found. Try a broader topic or wider filters.',
+        )
+      }
+
+      const ratings = await screenCandidates(topic, candidates, deps, (done, total) =>
+        setState({ phase: 'screening', done, total, failed: 0 }),
+      )
+      const chosen = selectPapers(ratings, maxPapers)
+
       setState({ ...IDLE, phase: 'collecting' })
-      await projectsAPI.collect(projectId, maxPapers)
+      await projectsAPI.collect(projectId, {
+        max_papers: maxPapers,
+        candidate_ids: chosen.map((r) => r.id),
+        relevance: chosen,
+      })
       await qc.invalidateQueries({ queryKey: keys.project(projectId) })
       const project = await waitForCollection(signal)
       if (project.status !== 'collected') {

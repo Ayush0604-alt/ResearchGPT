@@ -17,6 +17,9 @@ export interface Project {
   topic: string
   description: string | null
   status: ProjectStatus
+  year_from: number | null
+  year_to: number | null
+  sources: SourceName[] | null
   progress: number
   current_step: string | null
   error: string | null
@@ -24,6 +27,20 @@ export interface Project {
   finished_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type SourceName = 'semantic_scholar' | 'openalex' | 'arxiv' | 'europepmc'
+
+/** A search result waiting to be screened. */
+export interface Candidate {
+  id: number
+  title: string
+  authors: string[]
+  abstract: string
+  year: number | null
+  source: string
+  doi: string | null
+  has_pdf: boolean
 }
 
 export interface ProjectList {
@@ -42,6 +59,9 @@ export interface Paper {
   source: string | null
   status: string
   has_full_text: boolean
+  doi: string | null
+  relevance_score: number | null
+  relevance_reason: string | null
   created_at: string
 }
 

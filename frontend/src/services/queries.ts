@@ -94,7 +94,7 @@ export function useFindings(id: string) {
 export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { topic: string; title?: string; description?: string }) =>
+    mutationFn: async (data: Parameters<typeof projectsAPI.create>[0]) =>
       (await projectsAPI.create(data)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.projects }),
   })
