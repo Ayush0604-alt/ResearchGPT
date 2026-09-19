@@ -153,8 +153,6 @@ export default function ReviewPage() {
   const [loading,   setLoading]   = useState(true)
   const [activeTab, setActiveTab] = useState('introduction')
 
-  useEffect(() => { fetchReview() }, [id])
-
   const fetchReview = async () => {
     try {
       const { data } = await reviewsAPI.get(id)
@@ -165,6 +163,8 @@ export default function ReviewPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => { fetchReview() }, [id])
 
   const download = async () => {
     try {

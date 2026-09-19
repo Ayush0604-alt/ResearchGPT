@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   Play, Loader2, CheckCircle, XCircle,
-  MessageSquare, BookOpen, Presentation, ExternalLink,
+  MessageSquare, BookOpen, ExternalLink,
   ChevronDown, ChevronUp, Users, ArrowLeft
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -35,11 +35,6 @@ export default function ProjectPage() {
   const [starting,   setStarting]   = useState(false)
   const [expanded,   setExpanded]   = useState({})
   const pollRef = useRef(null)
-
-  useEffect(() => {
-    load()
-    return () => clearInterval(pollRef.current)
-  }, [id])
 
   const load = async () => {
     try {
@@ -104,6 +99,11 @@ export default function ProjectPage() {
       } catch { /* swallow polling errors */ }
     }, 2500)
   }
+
+  useEffect(() => {
+    load()
+    return () => clearInterval(pollRef.current)
+  }, [id])
 
   if (loading) return (
     <div className="flex items-center justify-center h-48">

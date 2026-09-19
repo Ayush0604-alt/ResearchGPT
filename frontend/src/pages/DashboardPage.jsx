@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  Plus, Loader2, CheckCircle, Clock, XCircle, AlertCircle,
-  Trash2, ChevronRight, FileSearch
-} from 'lucide-react'
+import { Plus, Loader2, Trash2, FileSearch } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { projectsAPI } from '../services/api'
 
@@ -18,8 +15,6 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState([])
   const [loading, setLoading]   = useState(true)
 
-  useEffect(() => { fetchProjects() }, [])
-
   const fetchProjects = async () => {
     try {
       const { data } = await projectsAPI.list()
@@ -30,6 +25,8 @@ export default function DashboardPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => { fetchProjects() }, [])
 
   const handleDelete = async (id, e) => {
     e.preventDefault()

@@ -21,11 +21,6 @@ export default function ChatPage() {
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
 
-  useEffect(() => { loadHistory() }, [id])
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
   const loadHistory = async () => {
     try {
       const { data } = await chatAPI.history(id)
@@ -33,6 +28,11 @@ export default function ChatPage() {
     } catch { /* empty is fine */ }
     finally { setFetching(false) }
   }
+
+  useEffect(() => { loadHistory() }, [id])
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const send = async () => {
     const q = input.trim()
