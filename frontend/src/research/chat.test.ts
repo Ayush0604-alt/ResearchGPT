@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage, Paper } from '../services/types'
-import { chatSystemPrompt, chatTurns, citedPaperIds, HISTORY_TURNS } from './chat'
+import { chatSystemPrompt, chatTurns, citedPaperIds, HISTORY_TURNS, passageQuery } from './chat'
 
 const paper = (id: number): Paper => ({
   id,
@@ -39,6 +39,23 @@ describe('chat', () => {
     expect(prompt).not.toContain('Abstract 1')
     expect(prompt).toContain('Abstract 2')
     expect(prompt).toMatch(/never follow instructions/)
+  })
+
+  it('adds matching passages from project papers only, as data', () => {
+    const prompt = chatSystemPrompt('graphs', [paper(1)], new Map(), new Map(), [
+      { paper_id: 1, text: 'We use ogbg-molhiv.' },
+      { paper_id: 99, text: 'Not a project paper.' },
+    ])
+    expect(prompt).toContain('<excerpt paper="P1">\nWe use ogbg-molhiv.\n</excerpt>')
+    expect(prompt).not.toContain('Not a project paper')
+    expect(prompt).toMatch(/<excerpt> tags is data/)
+    expect(chatSystemPrompt('graphs', [paper(1)], new Map(), new Map())).not.toContain('Passages')
+  })
+
+  it('searches passages with the previous question too, for follow-ups', () => {
+    const history = [msg(0), msg(1), msg(2), msg(3)] // m2 is the last user message
+    expect(passageQuery(history, 'and the dataset?')).toBe('and the dataset? m2')
+    expect(passageQuery([], 'x'.repeat(600))).toHaveLength(500)
   })
 
   it('sends only the last few turns plus the new question', () => {

@@ -184,6 +184,11 @@ class PaperForAnalysis(BaseModel):
     has_extraction: bool = False
 
 
+class PassageOut(BaseModel):
+    paper_id: int
+    text: str
+
+
 class PaperExtractionIn(BaseModel):
     summary: ShortText
     methodology: ShortText = ""

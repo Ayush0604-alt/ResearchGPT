@@ -10,6 +10,7 @@ import type {
   PaperFindings,
   PaperForAnalysis,
   PaperSummary,
+  Passage,
   Candidate,
   Project,
   SourceName,
@@ -121,6 +122,9 @@ export const papersAPI = {
     api.get<ArrayBuffer>(`/papers/${pid}/${paperId}/pdf`, { responseType: 'arraybuffer' }),
   summaries: (pid: number | string) => api.get<PaperSummary[]>(`/papers/${pid}/summaries`),
   findings: (pid: number | string) => api.get<PaperFindings[]>(`/papers/${pid}/findings`),
+  /** Passages of the papers' full text that best match a question. */
+  passages: (pid: number | string, q: string) =>
+    api.get<Passage[]>(`/papers/${pid}/passages`, { params: { q } }),
 }
 
 // ── Reviews ───────────────────────────────────────────────────────────────────

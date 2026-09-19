@@ -6,7 +6,7 @@ import { chatAPI, errorMessage, papersAPI } from '../services/api'
 import { keys } from '../services/queries'
 import type { ChatMessage } from '../services/types'
 import { useLLMSettings } from '../store/llmSettings'
-import { chatSystemPrompt, chatTurns, citedPaperIds } from './chat'
+import { chatSystemPrompt, chatTurns, citedPaperIds, passageQuery } from './chat'
 
 function chatErrorMessage(err: unknown): string {
   if (err instanceof InvalidKeyError) return 'Your API key was rejected. Update it in Settings.'
@@ -50,6 +50,12 @@ export function useChat(projectId: string, topic: string) {
         ),
       ])
 
+      // Best effort: without passages the model still has every paper's findings.
+      const passages = await papersAPI
+        .passages(projectId, passageQuery(history, question))
+        .then((r) => r.data)
+        .catch(() => [])
+
       let answer = ''
       for await (const chunk of getProvider(settings.provider).stream({
         apiKey: settings.apiKey,
@@ -59,6 +65,7 @@ export function useChat(projectId: string, topic: string) {
           papers,
           new Map(summaries.map((s) => [s.paper_id, s])),
           new Map(findings.map((f) => [f.paper_id, f])),
+          passages,
         ),
         messages: chatTurns(history, question),
         maxOutputTokens: 2048,

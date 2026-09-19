@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 
 // A full research run in the browser: the server collects papers (search is
 // stubbed on the e2e server), then this page analyses them with the user's
-// key against a stubbed Gemini API.
+// key against stubbed provider APIs (Gemini, Anthropic, OpenAI).
 
 const KEY = 'AIza-e2e-research-key-0123456789'
 
@@ -193,9 +193,14 @@ async function stubGemini(page: Page) {
 
 `
       const turns = body.contents.length
+      const excerpts = [...system.matchAll(/<excerpt paper="P\d+">/g)].length
       return route.fulfill({
         contentType: 'text/event-stream',
-        body: event('Most papers use ') + event(`GraphGPS [P${id}]. `) + event(`(turns: ${turns})`),
+        body:
+          event('Most papers use ') +
+          event(`GraphGPS [P${id}]. `) +
+          event(`(turns: ${turns})`) +
+          event(` (excerpts: ${excerpts})`),
       })
     }
 
@@ -463,3 +468,17 @@ for (const [label, stub, models] of [
     await expect(page.getByTestId('run-info')).toContainText(models[1])
   })
 }
+
+test('chat quotes passages of the full texts that match the question', async ({ page }) => {
+  await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'graph passages')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('link', { name: 'Chat' }).click()
+  // The stub papers' text reads "Full text of <url>." many times over.
+  await page.getByLabel('Your question').fill('What does the full text say?')
+  await page.getByRole('button', { name: 'Send question' }).click()
+  await expect(page.getByText(/\(excerpts: [1-9]\d*\)/)).toBeVisible()
+})

@@ -4,15 +4,15 @@ Papers Routes: /api/papers
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_owned_project
 from app.db.session import get_db
 from app.models.models import Paper, PaperFindings, PaperSummary, ResearchProject
-from app.schemas.schemas import FindingsOut, PaperForAnalysis, PaperOut, SummaryOut
-from app.services import analysis_service, collection_service
+from app.schemas.schemas import FindingsOut, PaperForAnalysis, PaperOut, PassageOut, SummaryOut
+from app.services import analysis_service, collection_service, passages
 
 router = APIRouter()
 
@@ -57,6 +57,17 @@ async def list_paper_texts(
 ):
     """Papers with their extracted full text, for the browser to analyse."""
     return await analysis_service.papers_for_analysis(db, project.id)
+
+
+@router.get("/{project_id}/passages", response_model=List[PassageOut])
+async def search_passages(
+    q: str = Query(min_length=1, max_length=500),
+    limit: int = Query(8, ge=1, le=20),
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Passages of the project's papers that best match a question, for chat."""
+    return await passages.search_passages(db, project.id, q, limit=limit)
 
 
 @router.get("/{project_id}/{paper_id}/pdf", response_class=Response)

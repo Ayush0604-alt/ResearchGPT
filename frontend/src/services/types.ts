@@ -118,6 +118,12 @@ export interface CitationCheck {
   note: string
 }
 
+/** A passage of a paper's text, found by full-text search. */
+export interface Passage {
+  paper_id: number
+  text: string
+}
+
 /** How a review was made; reported by the browser that ran the pipeline. */
 export interface RunMeta {
   prompt_version: string

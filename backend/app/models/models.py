@@ -6,8 +6,19 @@ import enum
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -156,6 +167,30 @@ class Paper(Base):
 
 # Cheap flag for listings, without loading the text itself.
 Paper.has_full_text = column_property(Paper.full_text.is_not(None))
+
+
+class PaperChunk(Base):
+    """
+    A passage of a paper's text (or its abstract), indexed for full-text search
+    so chat can quote the papers themselves. Built lazily on first search.
+    """
+
+    __tablename__ = "paper_chunks"
+    __table_args__ = (
+        UniqueConstraint("paper_id", "ord"),
+        Index("ix_paper_chunks_tsv", "tsv", postgresql_using="gin"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    paper_id: Mapped[int] = mapped_column(
+        ForeignKey("papers.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("research_projects.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    ord: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    tsv = mapped_column(TSVECTOR, Computed("to_tsvector('english', text)", persisted=True))
 
 
 # ── Paper Summaries ───────────────────────────────────────────────────────────
