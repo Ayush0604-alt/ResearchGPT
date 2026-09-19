@@ -1,15 +1,22 @@
 """
 Application configuration — loaded from environment variables / .env file.
-
-Fix: moved load_dotenv() call before Settings class definition so .env is
-loaded before pydantic-settings tries to read values.
+Environment variables take precedence over .env.
 """
 
 import json
 from typing import List
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_SECRET_KEY = "dev_secret_key_change_in_production_min_32_chars"
+_PLACEHOLDER_SECRETS = {
+    _DEV_SECRET_KEY,
+    "your_jwt_secret_key_here_min_32_chars",
+    "changeme",
+    "change-me",
+    "secret",
+}
 
 
 class Settings(BaseSettings):
@@ -23,11 +30,13 @@ class Settings(BaseSettings):
     # ── App ────────────────────────────────────────────────────────────────────
     APP_NAME: str = "ResearchGPT"
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
+    SQL_ECHO: bool = False  # log every SQL statement (noisy; dev only)
     API_V1_PREFIX: str = "/api"
 
     # ── Security ───────────────────────────────────────────────────────────────
-    SECRET_KEY: str = "dev_secret_key_change_in_production_min_32_chars"
+    # The default only works when APP_ENV=development (see _require_strong_secret).
+    SECRET_KEY: str = _DEV_SECRET_KEY
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ALGORITHM: str = "HS256"
 
@@ -87,6 +96,18 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
+
+    @model_validator(mode="after")
+    def _require_strong_secret(self):
+        """Outside development, refuse to start with a guessable JWT secret."""
+        if self.APP_ENV == "development":
+            return self
+        if len(self.SECRET_KEY) < 32 or self.SECRET_KEY in _PLACEHOLDER_SECRETS:
+            raise ValueError(
+                f"SECRET_KEY is missing, too short or a placeholder (APP_ENV={self.APP_ENV}). "
+                "Generate one with: openssl rand -hex 32"
+            )
+        return self
 
 
 settings = Settings()

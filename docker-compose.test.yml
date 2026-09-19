@@ -1,0 +1,13 @@
+# Throwaway Postgres for the backend test suite (data lives in memory).
+#   docker compose -f docker-compose.test.yml up -d
+services:
+  test-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: researchgpt_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"

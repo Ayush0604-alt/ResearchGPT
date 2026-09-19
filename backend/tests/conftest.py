@@ -3,7 +3,7 @@ Test harness.
 
 Tests run against a throwaway local Postgres, never the database in .env:
 
-    docker compose --profile test up -d test-db
+    docker compose -f docker-compose.test.yml up -d
 
 Override with TEST_DATABASE_URL (must point at localhost or the CI service).
 Environment variables win over .env in pydantic-settings, so they are set here,
@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://postgres:test@localhost:55432/researchgpt_test",
+    "postgresql+asyncpg://postgres:test@127.0.0.1:55432/researchgpt_test",
 )
 
 _host = urlparse(TEST_DATABASE_URL).hostname

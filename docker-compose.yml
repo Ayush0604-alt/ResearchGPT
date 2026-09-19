@@ -1,5 +1,4 @@
-version: "3.9"
-
+# Full stack. Requires a root .env with POSTGRES_PASSWORD (see .env.example).
 services:
   # ── PostgreSQL ───────────────────────────────────────────────────────────────
   db:
@@ -7,38 +6,22 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
       POSTGRES_DB:       researchgpt
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # localhost only, for running the backend outside Docker
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Test database (throwaway, in-memory) ─────────────────────────────────────
-  # docker compose --profile test up -d test-db
-  test-db:
-    image: postgres:15-alpine
-    profiles: ["test"]
-    environment:
-      POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: test
-      POSTGRES_DB:       researchgpt_test
-    tmpfs:
-      - /var/lib/postgresql/data
-    ports:
-      - "55432:5432"
-
   # ── Redis (for Celery task queue — optional) ─────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
 
   # ── Backend ──────────────────────────────────────────────────────────────────
   backend:
@@ -48,14 +31,14 @@ services:
     restart: unless-stopped
     env_file: ./backend/.env
     environment:
-      DATABASE_URL:      postgresql+asyncpg://postgres:password@db:5432/researchgpt
-      SYNC_DATABASE_URL: postgresql://postgres:password@db:5432/researchgpt
+      DATABASE_URL:      postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/researchgpt
+      SYNC_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/researchgpt
       REDIS_URL:         redis://redis:6379/0
     volumes:
       - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"   # the frontend reaches the API through nginx
     depends_on:
       db:
         condition: service_healthy

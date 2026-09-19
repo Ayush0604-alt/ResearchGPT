@@ -24,7 +24,7 @@ if "neon.tech" in db_url or "supabase" in db_url or "sslmode=require" in db_url:
 
 engine = create_async_engine(
     db_url,
-    echo=settings.DEBUG,
+    echo=settings.SQL_ECHO,
     pool_pre_ping=True,
     connect_args=connect_args,
 )
