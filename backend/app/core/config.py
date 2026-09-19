@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = False
     SQL_ECHO: bool = False  # log every SQL statement (noisy; dev only)
+    LOG_FORMAT: str = Field(default="text", pattern="^(text|json)$")
+    LOG_TO_FILE: bool = True  # turn off in containers; stdout is collected there
+    SENTRY_DSN: str = ""  # optional error tracking (backend only)
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(default=0.0, ge=0.0, le=1.0)
     API_V1_PREFIX: str = "/api"
 
     # ── Security ───────────────────────────────────────────────────────────────

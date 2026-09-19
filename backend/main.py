@@ -4,6 +4,8 @@ The schema is managed by Alembic only (no create_all).
 """
 
 import os
+import re
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -12,15 +14,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 
 from app.api.routes import auth, chat, papers, projects, reviews
 from app.core.config import settings
-from app.core.logging import setup_logging
+from app.core.logging import setup_logging, setup_sentry
 from app.core.rate_limit import limiter, rate_limit_exceeded
 from app.db.session import AsyncSessionLocal, engine
 from app.services import collection_service
 
 setup_logging()
+setup_sentry()
 
 
 @asynccontextmanager
@@ -30,7 +34,8 @@ async def lifespan(app: FastAPI):
     heartbeat went stale (e.g. cut off by a restart).
     Shutdown: dispose async engine connection pool.
     """
-    os.makedirs("./logs", exist_ok=True)
+    if settings.LOG_TO_FILE:
+        os.makedirs("./logs", exist_ok=True)
     async with AsyncSessionLocal() as db:
         stale = await collection_service.fail_stale_collections(db)
         await db.commit()
@@ -64,6 +69,20 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+@app.middleware("http")
+async def request_id(request: Request, call_next):
+    """Tag every log line of a request, and the response, with a request id.
+    A well-formed incoming X-Request-ID (e.g. from the proxy) is reused."""
+    incoming = request.headers.get("x-request-id", "")
+    rid = incoming if REQUEST_ID.match(incoming) else uuid.uuid4().hex[:16]
+    with logger.contextualize(request_id=rid):
+        response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
+
 
 API_SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -113,4 +132,11 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "healthy"}
+    """Liveness plus a database round-trip; 503 when the database is unreachable."""
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("[Health] database check failed")
+        return JSONResponse({"status": "unhealthy", "database": "down"}, status_code=503)
+    return {"status": "healthy", "database": "up"}

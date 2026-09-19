@@ -163,6 +163,14 @@ async def run(
     # Resolved at call time so tests can patch the module-level defaults.
     search = search or default_search
     fetch_text = fetch_text or default_fetch_text
+    with logger.contextualize(project_id=project_id):
+        await _run(project_id, topic, max_papers, search, fetch_text)
+
+
+async def _run(
+    project_id: int, topic: str, max_papers: int, search: SearchFn, fetch_text: FetchTextFn
+) -> None:
+    logger.info(f"[Collect] Started: max_papers={max_papers}")
     beat = asyncio.create_task(_heartbeat(project_id))
     try:
         await _set(project_id, current_step="Searching for papers", progress=5)
@@ -215,7 +223,9 @@ async def run(
             )
             await db.commit()
     except Exception as exc:
-        if not isinstance(exc, CollectionError):
+        if isinstance(exc, CollectionError):
+            logger.info(f"[Collect] Failed: {exc}")
+        else:
             logger.exception(f"[Collect] Project {project_id} failed")
         message = str(exc) if isinstance(exc, CollectionError) else UNEXPECTED_MESSAGE
         try:
