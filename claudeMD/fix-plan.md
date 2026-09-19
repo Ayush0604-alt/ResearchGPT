@@ -202,7 +202,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 ## Phase 3: Bring your own key (the deployment goal)
 
-### ☐ Step 18: Key settings in the browser · D§1
+### ☑ Step 18: Key settings in the browser · D§1
 - Create a new zustand store `llmSettings`, persisted as `researchgpt-llm` **separately** from auth. It holds `{ provider, apiKey, extractModel, synthModel }`.
 - Build a `/settings` page with:
   - provider dropdown, masked key input with show and hide, model pickers
@@ -214,7 +214,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** the key survives a reload, logging out does not erase it (unless the user clicks Clear), and the Network tab shows the key going **only** to the provider's domain.
 
-### ☐ Step 19: Provider adapter and Gemini implementation · D§2, *covers I§2 "Gemini retry/timeout" and "structured parse"*
+### ☑ Step 19: Provider adapter and Gemini implementation · D§2, *covers I§2 "Gemini retry/timeout" and "structured parse"*
 - Create `src/llm/`:
   - `types.ts`: the `LLMProvider` interface
   - `providers/gemini.ts`: uses `@google/genai`
@@ -226,7 +226,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** the adapter tests pass, and a manual test-page call returns validated JSON using your own key.
 
-### ☐ Step 20: Replace LangGraph and the in-memory task store with a Postgres job · D§5, I§2 (task state), I§4 (LangGraph)
+### ☑ Step 20: Replace LangGraph and the in-memory task store with a Postgres job · D§5, I§2 (task state), I§4 (LangGraph)
 - Add `procrastinate` (a job queue that runs on Postgres) and a `collect_project(project_id)` job.
 - Write progress to the `research_projects` columns added in Step 13.
 - New endpoints:
@@ -237,7 +237,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** collection survives a backend restart (the job resumes or fails cleanly), `--workers 2` works, and `grep -r langgraph backend/` finds nothing.
 
-### ☐ Step 21: Improve collection · I§3 (parallel downloads, use PDFs), D§5 (SSRF, R6)
+### ☑ Step 21: Improve collection · I§3 (parallel downloads, use PDFs), D§5 (SSRF, R6)
 - Downloads: `asyncio.gather` with `Semaphore(4)`, one shared `httpx.AsyncClient`, a check for the `%PDF` magic bytes, and limits on size and page count.
 - **SSRF guard:** allow only `http` and `https`, resolve the hostname and reject private, loopback and link-local addresses, allow at most 3 redirects and check each one.
 - Extract the text with `pymupdf4llm` into `papers.full_text`, then **delete the PDF**. Don't keep files on disk (this satisfies R6).
@@ -246,7 +246,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** a collection run fills `full_text` for most arXiv papers, `storage/` stays empty, and the SSRF test passes.
 
-### ☐ Step 22: Analysis runs in the browser (map-reduce) · D§3, *covers I§3 "per-paper findings" and "map-reduce", I§2 "comparison discarded", I§1 "prompt injection"*
+### ☑ Step 22: Analysis runs in the browser (map-reduce) · D§3, *covers I§3 "per-paper findings" and "map-reduce", I§2 "comparison discarded", I§1 "prompt injection"*
 - Backend endpoints (they store data only and never call an LLM):
   - `GET /projects/{id}/papers?with_text=true`
   - `PUT /papers/{id}/extraction`, which fills `paper_summaries` and `paper_findings`
@@ -262,14 +262,14 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** a full run completes with **no LLM calls from the server**, the paper findings table is populated, and closing the tab halfway then reopening it finishes the run.
 
-### ☐ Step 23: Chat runs in the browser · D§3, *covers I§2 "chat memory", "persist order", "citations"*
+### ☑ Step 23: Chat runs in the browser · D§3, *covers I§2 "chat memory", "persist order", "citations"*
 - The browser builds the context (the extractions plus relevant `full_text` sections), includes the last 6–10 turns, and **streams** the answer.
 - When the answer is complete, it calls `POST /projects/{id}/chat/messages` once with the question and the answer, including `citations: [{paper_id, …}]`. Nothing is saved on failure.
 - `[paper_id]` markers render as links to the paper cards.
 
 **Done when:** a follow-up question such as "what about the second one?" works, citations show up and link correctly, and the server has no chat LLM code.
 
-### ☐ Step 24: Remove all LLM code from the server · D§0 (R2, R3)
+### ☑ Step 24: Remove all LLM code from the server · D§0 (R2, R3)
 - Delete `utils/gemini_client.py`, `agents/comprehensive/`, the `google-genai` dependency and the `GEMINI_*` settings.
 - Add a startup check that fails if any `*_API_KEY` for an LLM provider is set while `APP_ENV=production`.
 - Build the progress UI from the steps the server reports plus the browser phases (collect, then extract N/M, then synthesise). This replaces the Step 11 `STEPS` array.
@@ -280,6 +280,16 @@ Use Alembic autogenerate, then review the result by hand:
 > ✅ **At the end of Phase 3** the deployment goal works locally.
 
 ---
+
+> **Phase 3 notes (2026-09-19):** 117 backend, 45 unit and 12 end-to-end tests pass. The e2e tests stub Gemini at the network layer and paper search on the e2e server, and they assert that no request to `/api` ever carries the key.
+>
+> Deviations from the plan, with reasons:
+> - **Step 20:** there is no procrastinate job queue. The collection job runs in-process and writes progress and a **heartbeat** to `research_projects`. A job with a stale heartbeat is failed at startup and whenever the project is read, so it handles restarts and multiple instances without a separate worker process (which would mean a second paid instance).
+> - **Step 21:** text is extracted with **pypdf** (BSD), not `pymupdf4llm`. PyMuPDF is AGPL, which carries obligations for a hosted service.
+> - **Step 19:** Gemini is called through its REST API with `fetch` rather than the `@google/genai` SDK: smaller bundle, and full control over sending the key only in a header.
+> - **Chat (Step 23):** fixed a history-ordering bug. A question and its answer share a timestamp, so history is now ordered by `(created_at, id)`.
+> - **Found by e2e:** toasts moved to the bottom-right, because top-right toasts covered the header's action buttons.
+> - **Production database:** migration 0004 turns old `running` projects into `failed` and drops `task_id` and `papers.pdf_path`. Remove `GEMINI_API_KEY` from any non-development `.env`, because the API now refuses to start with it.
 
 ## Phase 4: Harden and launch 🚀
 
