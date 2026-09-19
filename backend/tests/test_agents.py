@@ -99,3 +99,17 @@ async def test_live_run_blocks_second_run(client, make_user, make_project, fake_
     assert run.json()["current_agent"] == "Already running"
     assert run.json()["progress"] == 40
     assert fake_workflow == []
+
+
+async def test_app_startup_fails_interrupted_runs(client, make_user, make_project):
+    from main import app
+
+    alice = await make_user()
+    pid = await make_project(alice)
+    await _set_status(pid, "running", "task_gone")
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    project = await client.get(f"/projects/{pid}", headers=alice["headers"])
+    assert project.json()["status"] == "failed"
