@@ -177,3 +177,28 @@ async def test_pdf_is_proxied_for_the_browser(client, make_user, make_project, m
         await client.get(f"/papers/{pid}/{with_pdf}/pdf", headers=other["headers"])
     ).status_code == 404
     assert fetched == ["https://example.org/ok.pdf"]
+
+
+async def test_citation_checks_are_stored_with_the_review(client, make_user, make_project):
+    user, pid, _ = await _collected_project(make_user, make_project)
+    checks = [
+        {"claim": "Transformers win [P1].", "paper_ids": [1], "verdict": "supported", "note": ""},
+        {
+            "claim": "It is free [P1].",
+            "paper_ids": [1],
+            "verdict": "unsupported",
+            "note": "Not stated",
+        },
+    ]
+    h = user["headers"]
+    await client.put(
+        f"/projects/{pid}/analysis", json=REVIEW | {"citation_checks": checks}, headers=h
+    )
+    review = (await client.get(f"/reviews/{pid}", headers=h)).json()
+    assert [c["verdict"] for c in review["citation_checks"]] == ["supported", "unsupported"]
+
+    bad = checks[:1] + [checks[1] | {"verdict": "maybe"}]
+    resp = await client.put(
+        f"/projects/{pid}/analysis", json=REVIEW | {"citation_checks": bad}, headers=h
+    )
+    assert resp.status_code == 422

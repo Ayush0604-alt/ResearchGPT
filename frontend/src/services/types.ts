@@ -109,6 +109,13 @@ export interface PaperExtractionIn {
   model: string
 }
 
+export interface CitationCheck {
+  claim: string
+  paper_ids: number[]
+  verdict: 'supported' | 'partly' | 'unsupported'
+  note: string
+}
+
 export interface AnalysisIn {
   introduction: string
   body: string
@@ -117,6 +124,7 @@ export interface AnalysisIn {
   trends: string
   gaps: string
   comparison: string
+  citation_checks: CitationCheck[]
   model: string
 }
 
@@ -130,6 +138,7 @@ export interface LiteratureReview {
   trends: string | null
   gaps: string | null
   comparison: string | null
+  citation_checks: CitationCheck[] | null
   created_at: string
 }
 

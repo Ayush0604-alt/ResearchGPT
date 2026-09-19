@@ -16,7 +16,7 @@ import {
   Users,
   XCircle,
 } from 'lucide-react'
-import { useResearchRun, type RunState } from '../research/useResearchRun'
+import { BROWSER_PHASES, useResearchRun, type RunState } from '../research/useResearchRun'
 import { useFindings, usePapers, useProject, useSummaries } from '../services/queries'
 import type { Paper, PaperFindings, PaperSummary, Project } from '../services/types'
 import { useHasVerifiedKey, useLLMSettings } from '../store/llmSettings'
@@ -87,6 +87,9 @@ function ProgressCard({ project, run }: { project: Project; run: RunState }) {
     label =
       `Reading papers with ${models.extractModel}: ${run.done} of ${run.total}` +
       (run.failed ? ` (${run.failed} skipped)` : '')
+  } else if (run.phase === 'checking') {
+    percent = null
+    label = `Checking the review's citations with ${models.extractModel}…`
   } else if (run.phase === 'writing') {
     percent = null
     label = `Writing the review with ${models.synthModel}…`
@@ -94,7 +97,7 @@ function ProgressCard({ project, run }: { project: Project; run: RunState }) {
     percent = project.progress
     label = project.current_step || 'Collecting papers…'
   }
-  const inBrowser = ['planning', 'screening', 'extracting', 'writing'].includes(run.phase)
+  const inBrowser = BROWSER_PHASES.includes(run.phase)
 
   return (
     <div className="card-p" aria-live="polite">

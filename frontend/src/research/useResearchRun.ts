@@ -12,7 +12,23 @@ import { runAnalysis, RunError, type AnalysisAPI } from './runAnalysis'
 import { planQueries, screenCandidates, selectPapers, snowballSeeds } from './screening'
 
 export type RunPhase =
-  'idle' | 'planning' | 'searching' | 'screening' | 'collecting' | 'extracting' | 'writing'
+  | 'idle'
+  | 'planning'
+  | 'searching'
+  | 'screening'
+  | 'collecting'
+  | 'extracting'
+  | 'writing'
+  | 'checking'
+
+/** Phases that run in this tab with the user's key (closing the tab stops them). */
+export const BROWSER_PHASES: RunPhase[] = [
+  'planning',
+  'screening',
+  'extracting',
+  'writing',
+  'checking',
+]
 
 export interface RunState {
   phase: RunPhase
@@ -54,7 +70,7 @@ export function useResearchRun(projectId: string) {
   const [state, setState] = useState<RunState>(IDLE)
   const controller = useRef<AbortController | null>(null)
   // Phases that run in this tab with the user's key (closing the tab stops them).
-  const analysing = ['planning', 'screening', 'extracting', 'writing'].includes(state.phase)
+  const analysing = BROWSER_PHASES.includes(state.phase)
 
   // Closing the tab stops the analysis; ask first.
   useEffect(() => {
@@ -102,11 +118,13 @@ export function useResearchRun(projectId: string) {
             return data.byteLength <= MAX_PDF_BYTES ? toBase64(data) : null
           }
         : undefined,
-      onProgress: (p) => setState(p.phase === 'writing' ? { ...IDLE, phase: 'writing' } : { ...p }),
+      onProgress: (p) =>
+        setState(p.phase === 'extracting' ? { ...p } : { ...IDLE, phase: p.phase }),
     })
     const notes = [
       result.failedPapers && `${result.failedPapers} paper(s) couldn't be analysed`,
       result.removedCitations && `${result.removedCitations} invalid citation(s) removed`,
+      result.unsupportedClaims && `${result.unsupportedClaims} claim(s) flagged in Citation check`,
     ].filter(Boolean)
     toast.success(`Review ready${notes.length ? ` (${notes.join('; ')})` : ''}`)
   }

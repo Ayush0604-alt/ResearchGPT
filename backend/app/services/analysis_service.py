@@ -106,6 +106,7 @@ async def save_analysis(db: AsyncSession, project: ResearchProject, data: Analys
         "comparison",
     ):
         setattr(review, field, getattr(data, field))
+    review.citation_checks = [c.model_dump() for c in data.citation_checks] or None
     project.status = ProjectStatus.COMPLETED.value
     project.error = None
     project.finished_at = datetime.now(timezone.utc)

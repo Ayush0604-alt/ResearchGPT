@@ -199,6 +199,13 @@ class PaperExtractionIn(BaseModel):
     model: Annotated[str, StringConstraints(max_length=100)] = ""
 
 
+class CitationCheck(BaseModel):
+    claim: Annotated[str, StringConstraints(max_length=1_000)]
+    paper_ids: List[int] = Field(max_length=10)
+    verdict: Literal["supported", "partly", "unsupported"]
+    note: Annotated[str, StringConstraints(max_length=300)] = ""
+
+
 class AnalysisIn(BaseModel):
     introduction: LongText
     body: LongText
@@ -207,6 +214,7 @@ class AnalysisIn(BaseModel):
     trends: LongText = ""
     gaps: LongText = ""
     comparison: LongText = ""
+    citation_checks: List[CitationCheck] = Field(default_factory=list, max_length=60)
     model: Annotated[str, StringConstraints(max_length=100)] = ""
 
 
@@ -269,6 +277,7 @@ class LiteratureReviewOut(BaseModel):
     trends: Optional[str] = None
     gaps: Optional[str] = None
     comparison: Optional[str] = None
+    citation_checks: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

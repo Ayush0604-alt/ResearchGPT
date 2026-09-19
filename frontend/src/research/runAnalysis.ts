@@ -31,8 +31,12 @@ export interface AnalysisAPI {
   saveAnalysis(projectId: number, data: AnalysisIn): Promise<unknown>
 }
 
+import { extractClaims, verifyClaims } from './verify'
+
 export type AnalysisProgress =
-  { phase: 'extracting'; done: number; total: number; failed: number } | { phase: 'writing' }
+  | { phase: 'extracting'; done: number; total: number; failed: number }
+  | { phase: 'writing' }
+  | { phase: 'checking' }
 
 export interface AnalysisDeps {
   provider: LLMProvider
@@ -50,6 +54,8 @@ export interface AnalysisDeps {
 export interface AnalysisResult {
   failedPapers: number
   removedCitations: number
+  /** Claims whose cited papers don't (fully) support them; null if not checked. */
+  unsupportedClaims: number | null
 }
 
 /** A run failure with a message meant for the user. */
@@ -184,7 +190,31 @@ export async function runAnalysis(
     signal,
   })
   const { review, unknown } = sanitizeReview(data, new Set(papers.map((p) => p.id)))
-  await api.saveAnalysis(projectId, { ...review, model: deps.synthModel })
 
-  return { failedPapers: failed, removedCitations: unknown.length }
+  // Check the citations claim by claim. Best effort: a failure here (even a
+  // rate limit) must not cost the user the review that's already written.
+  onProgress({ phase: 'checking' })
+  let checks: Awaited<ReturnType<typeof verifyClaims>> | null = null
+  try {
+    checks = await verifyClaims(extractClaims(review), summaryBy, findingsBy, {
+      provider,
+      apiKey,
+      model: deps.extractModel,
+      signal,
+    })
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err
+  }
+
+  await api.saveAnalysis(projectId, {
+    ...review,
+    citation_checks: checks ?? [],
+    model: deps.synthModel,
+  })
+
+  return {
+    failedPapers: failed,
+    removedCitations: unknown.length,
+    unsupportedClaims: checks ? checks.filter((c) => c.verdict !== 'supported').length : null,
+  }
 }

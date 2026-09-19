@@ -16,8 +16,8 @@ const EXTRACTION = {
   key_quotes: ['q'],
 }
 const REVIEW = {
-  introduction: 'Intro [P1][P99].',
-  body: 'Body [P2].',
+  introduction: 'The introduction states a cited fact [P1][P99].',
+  body: 'The body compares both approaches in detail [P2].',
   comparison: '| Paper |',
   trends: 'T',
   gaps: 'G',
@@ -54,6 +54,15 @@ function fakeProvider(onExtract?: (req: CompletionRequest) => unknown) {
     complete: async (req) => {
       calls.push(req)
       const isReview = req.system?.includes('literature reviews')
+      if (req.system?.includes('fact-check')) {
+        const n = [...req.messages[0].text.matchAll(/CLAIM (\d+):/g)].length
+        const checks = Array.from({ length: n }, (_, index) => ({
+          index,
+          verdict: index === 0 ? 'partly' : 'supported',
+          note: 'only in part',
+        }))
+        return { text: JSON.stringify({ checks }), finishReason: 'stop' }
+      }
       const body = isReview ? REVIEW : (onExtract?.(req) ?? EXTRACTION)
       return { text: JSON.stringify(body), finishReason: 'stop' }
     },
@@ -106,10 +115,29 @@ describe('runAnalysis', () => {
 
     expect([...api.saved.keys()].sort()).toEqual([1, 2])
     expect(api.saved.get(1)?.model).toBe('fast')
-    expect(calls.at(-1)?.model).toBe('strong')
-    expect(api.analysis).toMatchObject({ introduction: 'Intro [P1].', model: 'strong' })
-    expect(result).toEqual({ failedPapers: 0, removedCitations: 1 })
-    expect(d.onProgress).toHaveBeenLastCalledWith({ phase: 'writing' })
+    expect(calls.find((c) => c.system?.includes('literature reviews'))?.model).toBe('strong')
+    expect(api.analysis).toMatchObject({
+      introduction: 'The introduction states a cited fact [P1].',
+      model: 'strong',
+    })
+    expect(api.analysis).toMatchObject({
+      citation_checks: [
+        {
+          claim: 'The introduction states a cited fact [P1].',
+          paper_ids: [1],
+          verdict: 'partly',
+          note: 'only in part',
+        },
+        {
+          claim: 'The body compares both approaches in detail [P2].',
+          paper_ids: [2],
+          verdict: 'supported',
+          note: '',
+        },
+      ],
+    })
+    expect(result).toEqual({ failedPapers: 0, removedCitations: 1, unsupportedClaims: 1 })
+    expect(d.onProgress).toHaveBeenLastCalledWith({ phase: 'checking' })
   })
 
   it('resumes: papers that already have an extraction are skipped', async () => {
@@ -254,5 +282,22 @@ describe('PDF attachments', () => {
       fetchPdf,
     })
     expect(fetchPdf).not.toHaveBeenCalled()
+  })
+})
+
+describe('citation check', () => {
+  it('never costs the review: a failed check saves the review without checks', async () => {
+    const { provider } = fakeProvider()
+    const failing: LLMProvider = {
+      ...provider,
+      complete: async (req) => {
+        if (req.system?.includes('fact-check')) throw new LLMError('quota exhausted', 429)
+        return provider.complete(req)
+      },
+    }
+    const api = fakeAPI([paper(1)])
+    const result = await runAnalysis(7, 't', deps(failing, api))
+    expect(api.analysis).toMatchObject({ citation_checks: [] })
+    expect(result.unsupportedClaims).toBeNull()
   })
 })

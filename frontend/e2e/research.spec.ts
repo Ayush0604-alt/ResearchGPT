@@ -90,6 +90,19 @@ async function stubGemini(page: Page) {
         }),
       })
     }
+    if (system.includes('fact-check')) {
+      // The first claim is flagged, the rest are supported.
+      const n = [...prompt.matchAll(/CLAIM (\d+):/g)].length
+      return route.fulfill({
+        json: geminiResponse({
+          checks: Array.from({ length: n }, (_, index) => ({
+            index,
+            verdict: index === 0 ? 'unsupported' : 'supported',
+            note: index === 0 ? 'The papers do not say this.' : '',
+          })),
+        }),
+      })
+    }
     if (system.includes('literature reviews')) {
       const ids = [...prompt.matchAll(/<paper id="P(\d+)">/g)].map((m) => m[1])
       return route.fulfill({
@@ -162,12 +175,32 @@ test('a full run: collect on the server, analyse in the browser, read the review
   await page.getByRole('button', { name: /Graph Transformers for Molecular/ }).click()
   await expect(page.getByText('ogbg-molhiv')).toBeVisible()
 
-  // The review keeps real citations and drops the invented one.
+  // The review keeps real citations (as numbered links) and drops the invented one.
   await page.getByRole('link', { name: 'Review' }).click()
-  await expect(page.getByText(/Graph learning is moving fast \[P\d+\]/)).toBeVisible()
+  const panel = page.getByRole('tabpanel')
+  await expect(panel.getByText(/Graph learning is moving fast/)).toBeVisible()
+  await expect(panel.getByRole('link', { name: '[1]' })).toBeVisible()
   await expect(page.getByText('P999999')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Comparison' }).click()
+  await page.getByRole('tab', { name: 'Comparison' }).click()
   await expect(page.getByRole('cell', { name: 'Transformer' })).toBeVisible()
+
+  // References are numbered in citation order.
+  await page.getByRole('tab', { name: 'References' }).click()
+  await expect(panel.getByRole('listitem')).toHaveCount(3)
+
+  // The flagged claim is surfaced first in the citation check.
+  await expect(page.getByText(/1 of \d+ checked claims aren't fully supported/)).toBeVisible()
+  await page.getByRole('tab', { name: 'Citation check (1)' }).click()
+  await expect(panel.getByText('Not supported')).toBeVisible()
+  await expect(panel.getByText('The papers do not say this.')).toBeVisible()
+
+  // Exports are generated in the browser.
+  const bib = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'BibTeX' }).click()
+  const file = await bib
+  expect(file.suggestedFilename()).toBe('graph-transformers.bib')
+  const text = await (await file.createReadStream()).toArray()
+  expect(Buffer.concat(text).toString()).toMatch(/^@article\{/)
 
   expect(apiRequestsWithKey).toEqual([])
 })

@@ -214,6 +214,8 @@ class LiteratureReview(Base):
     trends: Mapped[Optional[str]] = mapped_column(Text)
     gaps: Mapped[Optional[str]] = mapped_column(Text)
     comparison: Mapped[Optional[str]] = mapped_column(Text)
+    # Claim-level check of the review's citations: [{claim, paper_ids, verdict, note}].
+    citation_checks: Mapped[Optional[list]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
 
     project: Mapped["ResearchProject"] = relationship(

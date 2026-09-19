@@ -18,9 +18,9 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-50 print:block print:h-auto print:overflow-visible print:bg-white">
       {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
+      <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col print:hidden">
         {/* Brand */}
         <div className="h-14 flex items-center gap-2.5 px-5 border-b border-gray-100">
           <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center flex-shrink-0">
@@ -105,7 +105,7 @@ export default function AppLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto print:overflow-visible">
         <div className="max-w-5xl mx-auto px-8 py-7">
           <Outlet />
         </div>
