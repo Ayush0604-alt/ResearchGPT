@@ -5,6 +5,7 @@ Downloads PDFs from URLs and stores them locally (S3-ready).
 Fix: partial file is removed when download is aborted due to size limit,
      so the next run will retry instead of treating the truncated file as valid.
 """
+
 import hashlib
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -44,7 +45,7 @@ class PaperCollectionAgent:
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Deterministic filename from URL hash
-        url_hash  = hashlib.md5(pdf_url.encode()).hexdigest()[:12]
+        url_hash = hashlib.md5(pdf_url.encode()).hexdigest()[:12]
         dest_path = dest_dir / f"{url_hash}.pdf"
 
         if dest_path.exists():
@@ -64,9 +65,7 @@ class PaperCollectionAgent:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=15))
     async def _download_pdf(self, url: str, dest: Path) -> Optional[str]:
-        headers = {
-            "User-Agent": "ResearchGPT/1.0 (research tool; mailto:contact@researchgpt.ai)"
-        }
+        headers = {"User-Agent": "ResearchGPT/1.0 (research tool; mailto:contact@researchgpt.ai)"}
         async with httpx.AsyncClient(
             timeout=self.timeout,
             follow_redirects=True,
@@ -80,7 +79,7 @@ class PaperCollectionAgent:
                     logger.warning(f"[CollectionAgent] Non-PDF content-type: {content_type}")
 
                 downloaded = 0
-                too_large  = False
+                too_large = False
                 async with aiofiles.open(dest, "wb") as f:
                     async for chunk in resp.aiter_bytes(chunk_size=8192):
                         downloaded += len(chunk)

@@ -5,6 +5,7 @@ Fix: delete route was missing `await db.commit()` — deletions were being
      rolled back by the session context manager's exception handler path,
      so clearing chat history appeared to work but messages reappeared on reload.
 """
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -17,6 +18,7 @@ from app.schemas.schemas import ChatHistoryOut
 from app.utils.gemini_client import ask_gemini
 
 router = APIRouter()
+
 
 class ChatQuery(BaseModel):
     project_id: int
@@ -49,9 +51,7 @@ async def clear_chat_history(
     # never committed — get_db() only commits on the yield path when no
     # exception is raised, but 204 responses have no body so some ASGI paths
     # skipped the commit.
-    await db.execute(
-        delete(ChatMessage).where(ChatMessage.project_id == project_id)
-    )
+    await db.execute(delete(ChatMessage).where(ChatMessage.project_id == project_id))
     # Explicit commit ensures the bulk delete is persisted regardless of
     # how the response is finalized.
     await db.commit()
@@ -64,24 +64,18 @@ async def chat_query(
     user_id: int = Depends(get_current_user_id),
 ):
     # Save user message
-    user_msg = ChatMessage(
-        project_id=body.project_id,
-        role="user",
-        content=body.question
-    )
+    user_msg = ChatMessage(project_id=body.project_id, role="user", content=body.question)
     db.add(user_msg)
     await db.commit()
-    
+
     # Fetch papers for context
-    result = await db.execute(
-        select(Paper).where(Paper.project_id == body.project_id)
-    )
+    result = await db.execute(select(Paper).where(Paper.project_id == body.project_id))
     papers = result.scalars().all()
-    
+
     context = ""
     for i, p in enumerate(papers[:15]):
         context += f"[{i+1}] {p.title} ({p.year})\nAbstract: {p.abstract}\n\n"
-        
+
     prompt = f"""You are an expert AI research assistant. Answer the user's question based ONLY on the following paper abstracts. If the answer is not in the papers, say so.
 
 Context Papers:
@@ -93,13 +87,9 @@ Question: {body.question}"""
         answer = await ask_gemini(prompt, max_tokens=2048)
     except Exception as e:
         answer = f"Sorry, I encountered an error: {e}"
-        
-    assistant_msg = ChatMessage(
-        project_id=body.project_id,
-        role="assistant",
-        content=answer
-    )
+
+    assistant_msg = ChatMessage(project_id=body.project_id, role="assistant", content=answer)
     db.add(assistant_msg)
     await db.commit()
-    
+
     return {"answer": answer, "sources": []}

@@ -1,6 +1,7 @@
 """
 Papers Routes: /api/papers
 """
+
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -22,8 +23,7 @@ async def list_papers(
     user_id: int = Depends(get_current_user_id),
 ):
     result = await db.execute(
-        select(Paper).where(Paper.project_id == project_id)
-        .order_by(Paper.created_at.desc())
+        select(Paper).where(Paper.project_id == project_id).order_by(Paper.created_at.desc())
     )
     return result.scalars().all()
 
@@ -35,9 +35,7 @@ async def list_summaries(
     user_id: int = Depends(get_current_user_id),
 ):
     result = await db.execute(
-        select(PaperSummary)
-        .join(Paper)
-        .where(Paper.project_id == project_id)
+        select(PaperSummary).join(Paper).where(Paper.project_id == project_id)
     )
     return result.scalars().all()
 
@@ -49,8 +47,6 @@ async def list_findings(
     user_id: int = Depends(get_current_user_id),
 ):
     result = await db.execute(
-        select(PaperFindings)
-        .join(Paper)
-        .where(Paper.project_id == project_id)
+        select(PaperFindings).join(Paper).where(Paper.project_id == project_id)
     )
     return result.scalars().all()

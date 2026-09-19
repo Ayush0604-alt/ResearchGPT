@@ -4,6 +4,7 @@ Application configuration — loaded from environment variables / .env file.
 Fix: moved load_dotenv() call before Settings class definition so .env is
 loaded before pydantic-settings tries to read values.
 """
+
 import json
 from typing import List
 

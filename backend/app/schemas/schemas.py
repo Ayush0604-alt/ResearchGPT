@@ -6,6 +6,7 @@ Fixes:
   ChromaDB distance-to-score conversion may produce None in edge cases.
 - RAGResponse.citations uses List[Dict] as fallback if structured parsing fails.
 """
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -13,20 +14,24 @@ from pydantic import BaseModel, EmailStr
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
+
 class UserRegister(BaseModel):
     email: EmailStr
     username: str
     password: str
 
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: int
     username: str
+
 
 class UserOut(BaseModel):
     id: int
@@ -40,10 +45,12 @@ class UserOut(BaseModel):
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 
+
 class ProjectCreate(BaseModel):
     topic: str
     title: Optional[str] = None
     description: Optional[str] = None
+
 
 class ProjectOut(BaseModel):
     id: int
@@ -58,12 +65,14 @@ class ProjectOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 class ProjectList(BaseModel):
     projects: List[ProjectOut]
     total: int
 
 
 # ── Papers ────────────────────────────────────────────────────────────────────
+
 
 class PaperMetadata(BaseModel):
     title: str
@@ -74,6 +83,7 @@ class PaperMetadata(BaseModel):
     pdf_url: Optional[str] = None
     source: Optional[str] = None
     external_id: Optional[str] = None
+
 
 class PaperOut(BaseModel):
     id: int
@@ -92,6 +102,7 @@ class PaperOut(BaseModel):
 
 # ── Summaries & Findings ──────────────────────────────────────────────────────
 
+
 class SummaryOut(BaseModel):
     paper_id: int
     summary: Optional[str] = None
@@ -99,6 +110,7 @@ class SummaryOut(BaseModel):
     conclusion: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
 
 class FindingsOut(BaseModel):
     paper_id: int
@@ -114,23 +126,27 @@ class FindingsOut(BaseModel):
 
 # ── Agents ────────────────────────────────────────────────────────────────────
 
+
 class AgentRunRequest(BaseModel):
     project_id: int
     max_papers: Optional[int] = 10
 
+
 class AgentStatusResponse(BaseModel):
     task_id: str
-    status: str         # pending | running | completed | failed
-    progress: Optional[int] = None   # 0-100
+    status: str  # pending | running | completed | failed
+    progress: Optional[int] = None  # 0-100
     current_agent: Optional[str] = None
     error: Optional[str] = None
 
 
 # ── RAG ───────────────────────────────────────────────────────────────────────
 
+
 class RAGQuery(BaseModel):
     project_id: int
     question: str
+
 
 class CitationSource(BaseModel):
     paper_title: str
@@ -139,6 +155,7 @@ class CitationSource(BaseModel):
     # FIX: Optional with default 0.0 — score may be missing in edge cases
     relevance_score: Optional[float] = 0.0
 
+
 class RAGResponse(BaseModel):
     answer: str
     citations: List[CitationSource]
@@ -146,6 +163,7 @@ class RAGResponse(BaseModel):
 
 
 # ── Literature Review ─────────────────────────────────────────────────────────
+
 
 class LiteratureReviewOut(BaseModel):
     id: int
@@ -163,6 +181,7 @@ class LiteratureReviewOut(BaseModel):
 
 # ── Presentations ─────────────────────────────────────────────────────────────
 
+
 class PresentationOut(BaseModel):
     id: int
     project_id: int
@@ -175,9 +194,11 @@ class PresentationOut(BaseModel):
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
+
 class ChatMessageIn(BaseModel):
     project_id: int
     message: str
+
 
 class ChatMessageOut(BaseModel):
     id: int
@@ -188,6 +209,7 @@ class ChatMessageOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
 
 class ChatHistoryOut(BaseModel):
     messages: List[ChatMessageOut]

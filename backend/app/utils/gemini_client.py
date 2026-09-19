@@ -5,6 +5,7 @@ Fixes:
 - Migrated from legacy `google-generativeai` to the new `google-genai` SDK.
 - The new SDK uses REST natively and bypasses the `grpcio` Python 3.13 Windows issue!
 """
+
 from google import genai
 from google.genai import types
 from loguru import logger
@@ -27,6 +28,7 @@ def _get_client():
 
 class RateLimitError(Exception):
     """Raised when the Gemini API returns a 429 ResourceExhausted error."""
+
     pass
 
 
@@ -44,17 +46,21 @@ async def ask_gemini(prompt: str, max_tokens: int = 4096, response_schema=None) 
         if response_schema:
             config_kwargs["response_mime_type"] = "application/json"
             config_kwargs["response_schema"] = response_schema
-            
+
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(**config_kwargs)
+            config=types.GenerateContentConfig(**config_kwargs),
         )
         text = response.text
         return text.strip() if text else ""
     except Exception as e:
         error_str = str(e)
         logger.error(f"[Gemini] API error: {type(e).__name__}: {e}")
-        if "429" in error_str or "ResourceExhausted" in type(e).__name__ or "ResourceExhausted" in error_str:
+        if (
+            "429" in error_str
+            or "ResourceExhausted" in type(e).__name__
+            or "ResourceExhausted" in error_str
+        ):
             raise RateLimitError("Gemini API rate limit exceeded (429 ResourceExhausted).") from e
         raise

@@ -2,6 +2,7 @@
 Agent 1: Paper Search Agent
 Searches Semantic Scholar, ArXiv, and PubMed for relevant papers.
 """
+
 import asyncio
 from typing import Any, Dict, List
 
@@ -64,16 +65,18 @@ class PaperSearchAgent:
             pdf_url = None
             if p.get("openAccessPdf"):
                 pdf_url = p["openAccessPdf"].get("url")
-            papers.append({
-                "title":       p.get("title", ""),
-                "authors":     [a["name"] for a in p.get("authors", [])],
-                "abstract":    p.get("abstract", ""),
-                "year":        p.get("year"),
-                "url":         p.get("url", ""),
-                "pdf_url":     pdf_url,
-                "source":      "semantic_scholar",
-                "external_id": p.get("paperId", ""),
-            })
+            papers.append(
+                {
+                    "title": p.get("title", ""),
+                    "authors": [a["name"] for a in p.get("authors", [])],
+                    "abstract": p.get("abstract", ""),
+                    "year": p.get("year"),
+                    "url": p.get("url", ""),
+                    "pdf_url": pdf_url,
+                    "source": "semantic_scholar",
+                    "external_id": p.get("paperId", ""),
+                }
+            )
         logger.debug(f"[Semantic Scholar] {len(papers)} papers")
         return papers
 
@@ -99,10 +102,10 @@ class PaperSearchAgent:
         papers = []
 
         for entry in root.findall("atom:entry", ns):
-            title   = entry.findtext("atom:title", default="", namespaces=ns).strip()
+            title = entry.findtext("atom:title", default="", namespaces=ns).strip()
             summary = entry.findtext("atom:summary", default="", namespaces=ns).strip()
             pub_date = entry.findtext("atom:published", default="", namespaces=ns)
-            year    = int(pub_date[:4]) if pub_date else None
+            year = int(pub_date[:4]) if pub_date else None
 
             authors = [
                 a.findtext("atom:name", default="", namespaces=ns)
@@ -110,18 +113,20 @@ class PaperSearchAgent:
             ]
 
             arxiv_id = entry.findtext("atom:id", default="", namespaces=ns)
-            pdf_url  = arxiv_id.replace("/abs/", "/pdf/") + ".pdf" if "/abs/" in arxiv_id else None
+            pdf_url = arxiv_id.replace("/abs/", "/pdf/") + ".pdf" if "/abs/" in arxiv_id else None
 
-            papers.append({
-                "title":       title,
-                "authors":     authors,
-                "abstract":    summary,
-                "year":        year,
-                "url":         arxiv_id,
-                "pdf_url":     pdf_url,
-                "source":      "arxiv",
-                "external_id": arxiv_id,
-            })
+            papers.append(
+                {
+                    "title": title,
+                    "authors": authors,
+                    "abstract": summary,
+                    "year": year,
+                    "url": arxiv_id,
+                    "pdf_url": pdf_url,
+                    "source": "arxiv",
+                    "external_id": arxiv_id,
+                }
+            )
 
         logger.debug(f"[ArXiv] {len(papers)} papers")
         return papers
@@ -131,6 +136,7 @@ class PaperSearchAgent:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def _search_pubmed(self, topic: str, limit: int) -> List[Dict]:
         import xml.etree.ElementTree as ET
+
         base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
         async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
@@ -157,11 +163,11 @@ class PaperSearchAgent:
         for article in root.findall(".//PubmedArticle"):
             pmid = article.findtext(".//PMID", default="")
             title = article.findtext(".//ArticleTitle", default="")
-            
+
             # Combine all abstract text parts
             abstract_texts = article.findall(".//AbstractText")
             abstract = " ".join([a.text for a in abstract_texts if a.text])
-            
+
             # Authors
             authors = []
             for author in article.findall(".//Author"):
@@ -169,21 +175,23 @@ class PaperSearchAgent:
                 init = author.findtext("Initials", default="")
                 if last:
                     authors.append(f"{last} {init}".strip())
-                    
+
             year_elem = article.findtext(".//PubDate/Year")
             year = int(year_elem) if year_elem and year_elem.isdigit() else None
-            
+
             if title and abstract:
-                papers.append({
-                    "title":       title,
-                    "authors":     authors,
-                    "abstract":    abstract,
-                    "year":        year,
-                    "url":         f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                    "pdf_url":     None,
-                    "source":      "pubmed",
-                    "external_id": pmid,
-                })
+                papers.append(
+                    {
+                        "title": title,
+                        "authors": authors,
+                        "abstract": abstract,
+                        "year": year,
+                        "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                        "pdf_url": None,
+                        "source": "pubmed",
+                        "external_id": pmid,
+                    }
+                )
 
         logger.debug(f"[PubMed] {len(papers)} papers")
         return papers

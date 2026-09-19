@@ -3,6 +3,7 @@ Projects Routes: /api/projects
 
 Fix: delete route was missing await db.commit() — same bug as chat.py.
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
