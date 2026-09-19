@@ -140,7 +140,51 @@ class FindingsOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Collection ────────────────────────────────────────────────────────────────────
+# ── Browser analysis (results computed in the browser with the user's key) ───
+
+# Generous caps: model output, but bounded so a client can't store megabytes.
+ShortText = Annotated[str, StringConstraints(max_length=20_000)]
+LongText = Annotated[str, StringConstraints(max_length=60_000)]
+
+
+class PaperForAnalysis(BaseModel):
+    id: int
+    title: str
+    authors: Optional[str] = None
+    year: Optional[int] = None
+    abstract: Optional[str] = None
+    full_text: Optional[str] = None
+    url: Optional[str] = None
+    has_extraction: bool = False
+
+
+class PaperExtractionIn(BaseModel):
+    summary: ShortText
+    methodology: ShortText = ""
+    conclusion: ShortText = ""
+    model_used: ShortText = ""
+    dataset_used: ShortText = ""
+    metrics: ShortText = ""
+    contributions: ShortText = ""
+    limitations: ShortText = ""
+    key_quotes: List[Annotated[str, StringConstraints(max_length=2_000)]] = Field(
+        default_factory=list, max_length=10
+    )
+    model: Annotated[str, StringConstraints(max_length=100)] = ""
+
+
+class AnalysisIn(BaseModel):
+    introduction: LongText
+    body: LongText
+    discussion: LongText = ""
+    conclusion: LongText = ""
+    trends: LongText = ""
+    gaps: LongText = ""
+    comparison: LongText = ""
+    model: Annotated[str, StringConstraints(max_length=100)] = ""
+
+
+# ── Collection ────────────────────────────────────────────────────────────────
 
 
 class CollectRequest(BaseModel):

@@ -16,6 +16,9 @@ ROUTES = [
     ("DELETE", "/chat/history/{pid}"),
     ("POST", "/chat/query"),
     ("POST", "/projects/{pid}/collect"),
+    ("GET", "/papers/{pid}/texts"),
+    ("PUT", "/projects/{pid}/papers/1/extraction"),
+    ("PUT", "/projects/{pid}/analysis"),
     ("GET", "/projects/{pid}"),
     ("DELETE", "/projects/{pid}"),
 ]
@@ -43,12 +46,19 @@ async def test_other_users_project_is_not_found(client, make_user, make_project,
     bob = await make_user()
     pid = await _project_with_message(make_project, alice)
 
-    body = {"project_id": pid, "question": "q", "max_papers": 1}
+    body = {
+        "project_id": pid,
+        "question": "q",
+        "max_papers": 1,
+        "summary": "s",
+        "introduction": "i",
+        "body": "b",
+    }
     resp = await client.request(
         method,
         path.format(pid=pid),
         headers=bob["headers"],
-        json=body if method == "POST" else None,
+        json=body if method in ("POST", "PUT") else None,
     )
 
     assert resp.status_code == 404, resp.text
@@ -58,12 +68,19 @@ async def test_other_users_project_is_not_found(client, make_user, make_project,
 @pytest.mark.parametrize("method,path", ROUTES)
 async def test_missing_project_is_not_found(client, make_user, method, path):
     bob = await make_user()
-    body = {"project_id": 999_999, "question": "q", "max_papers": 1}
+    body = {
+        "project_id": 999_999,
+        "question": "q",
+        "max_papers": 1,
+        "summary": "s",
+        "introduction": "i",
+        "body": "b",
+    }
     resp = await client.request(
         method,
         path.format(pid=999_999),
         headers=bob["headers"],
-        json=body if method == "POST" else None,
+        json=body if method in ("POST", "PUT") else None,
     )
     assert resp.status_code == 404, resp.text
 

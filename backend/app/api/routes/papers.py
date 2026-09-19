@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_owned_project
 from app.db.session import get_db
 from app.models.models import Paper, PaperFindings, PaperSummary, ResearchProject
-from app.schemas.schemas import FindingsOut, PaperOut, SummaryOut
+from app.schemas.schemas import FindingsOut, PaperForAnalysis, PaperOut, SummaryOut
+from app.services import analysis_service
 
 router = APIRouter()
 
@@ -47,3 +48,12 @@ async def list_findings(
         select(PaperFindings).join(Paper).where(Paper.project_id == project.id)
     )
     return result.scalars().all()
+
+
+@router.get("/{project_id}/texts", response_model=List[PaperForAnalysis])
+async def list_paper_texts(
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Papers with their extracted full text, for the browser to analyse."""
+    return await analysis_service.papers_for_analysis(db, project.id)

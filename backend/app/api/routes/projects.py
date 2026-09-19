@@ -10,8 +10,15 @@ from app.api.deps import get_owned_project
 from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import ResearchProject
-from app.schemas.schemas import CollectRequest, ProjectCreate, ProjectList, ProjectOut
-from app.services import collection_service
+from app.schemas.schemas import (
+    AnalysisIn,
+    CollectRequest,
+    PaperExtractionIn,
+    ProjectCreate,
+    ProjectList,
+    ProjectOut,
+)
+from app.services import analysis_service, collection_service
 
 router = APIRouter()
 
@@ -83,4 +90,31 @@ async def collect_papers(
     # get_db commits the new status before the response goes out, and the job
     # runs after that, so it always sees a committed 'collecting' row.
     background_tasks.add_task(collection_service.run, project.id, project.topic, body.max_papers)
+    return project
+
+
+@router.put("/{project_id}/papers/{paper_id}/extraction", status_code=204)
+async def save_paper_extraction(
+    paper_id: int,
+    body: PaperExtractionIn,
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store one paper's findings, extracted in the browser. Saved per paper so a
+    closed tab can resume from the papers that aren't done yet."""
+    analysis_service.require_collected(project)
+    await analysis_service.save_extraction(db, project, paper_id, body)
+
+
+@router.put("/{project_id}/analysis", response_model=ProjectOut)
+async def save_project_analysis(
+    body: AnalysisIn,
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store the literature review written in the browser; the project is complete."""
+    analysis_service.require_collected(project)
+    await analysis_service.save_analysis(db, project, body)
+    await db.flush()
+    await db.refresh(project)
     return project
