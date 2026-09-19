@@ -80,6 +80,12 @@ class ResearchProject(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
     # Refreshed by a running collection job; a stale value means the job died.
     heartbeat_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
+    # Search filters chosen when the project was created.
+    year_from: Mapped[Optional[int]] = mapped_column(Integer)
+    year_to: Mapped[Optional[int]] = mapped_column(Integer)
+    sources: Mapped[Optional[list]] = mapped_column(JSONB)  # None = all sources
+    # Latest search results, waiting to be screened in the browser.
+    candidates: Mapped[Optional[list]] = mapped_column(JSONB, deferred=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime, server_default=func.now(), onupdate=func.now()
@@ -120,6 +126,9 @@ class Paper(Base):
     source: Mapped[Optional[str]] = mapped_column(String(100))
     external_id: Mapped[Optional[str]] = mapped_column(String(255))
     doi: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    # Relevance to the topic (0-10) and the reason, from screening in the browser.
+    relevance_score: Mapped[Optional[int]] = mapped_column(Integer)
+    relevance_reason: Mapped[Optional[str]] = mapped_column(Text)
     # Extracted PDF text (up to ~150k chars). Deferred: load it explicitly
     # with undefer(Paper.full_text) where it's needed.
     full_text: Mapped[Optional[str]] = mapped_column(Text, deferred=True)

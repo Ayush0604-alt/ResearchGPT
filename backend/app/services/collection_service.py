@@ -117,6 +117,19 @@ async def default_search(topic: str, max_papers: int) -> List[Dict[str, Any]]:
     return list(await search_papers([topic], max_papers))
 
 
+async def default_candidates(
+    queries: List[str],
+    limit: int,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    sources: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Candidates for screening. Module-level so tests can patch it."""
+    return list(
+        await search_papers(queries, limit, year_from=year_from, year_to=year_to, sources=sources)
+    )
+
+
 async def default_fetch_text(client: httpx.AsyncClient, url: str) -> Optional[str]:
     """Download a PDF (public URLs only) and return its text, or None."""
     try:
@@ -161,6 +174,8 @@ async def replace_papers(db: AsyncSession, project_id: int, papers: List[Dict[st
                 source=data.get("source") or "",
                 external_id=(data.get("external_id") or "")[:255],
                 doi=(data.get("doi") or None),
+                relevance_score=data.get("relevance_score"),
+                relevance_reason=(data.get("relevance_reason") or None),
                 full_text=data.get("full_text"),
                 status="processed" if data.get("full_text") else "found",
             )
@@ -172,73 +187,43 @@ async def run(
     topic: str,
     max_papers: int,
     *,
+    selected: Optional[List[Dict[str, Any]]] = None,
     search: Optional[SearchFn] = None,
     fetch_text: Optional[FetchTextFn] = None,
 ) -> None:
-    """Run one collection job to completion, recording success or failure."""
+    """Run one collection job to completion, recording success or failure.
+
+    `selected`: papers already chosen by screening; otherwise the topic is searched.
+    """
     # Resolved at call time so tests can patch the module-level defaults.
     search = search or default_search
     fetch_text = fetch_text or default_fetch_text
     with logger.contextualize(project_id=project_id):
-        await _run(project_id, topic, max_papers, search, fetch_text)
+        await _run(project_id, topic, max_papers, selected, search, fetch_text)
 
 
 async def _run(
-    project_id: int, topic: str, max_papers: int, search: SearchFn, fetch_text: FetchTextFn
+    project_id: int,
+    topic: str,
+    max_papers: int,
+    selected: Optional[List[Dict[str, Any]]],
+    search: SearchFn,
+    fetch_text: FetchTextFn,
 ) -> None:
     logger.info(f"[Collect] Started: max_papers={max_papers}")
     beat = asyncio.create_task(_heartbeat(project_id))
     try:
-        await _set(project_id, current_step="Searching for papers", progress=5)
-        try:
-            papers = await search(topic, max_papers)
-        except Exception as exc:
-            logger.exception(f"[Collect] Search failed for project {project_id}")
-            raise CollectionError(
-                "The paper search services couldn't be reached. Please try again shortly."
-            ) from exc
+        if selected is not None:
+            papers = [dict(p) for p in selected]
+        else:
+            await _set(project_id, current_step="Searching for papers", progress=5)
+            papers = await _search_or_fail(search, topic, max_papers, project_id)
         if not papers:
             raise CollectionError(
                 "No papers with abstracts were found for this topic. "
                 "Try a broader or differently worded topic."
             )
-
-        total = len(papers)
-        await _set(project_id, current_step=f"Reading {total} papers", progress=25)
-        done = 0
-        semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
-
-        async def read(paper: Dict[str, Any], client: httpx.AsyncClient) -> None:
-            nonlocal done
-            paper["full_text"] = await reuse_text(paper.get("doi"), paper.get("pdf_url"))
-            if not paper["full_text"] and paper.get("pdf_url"):
-                async with semaphore:
-                    paper["full_text"] = await fetch_text(client, paper["pdf_url"])
-            done += 1
-            await _set(project_id, progress=25 + int(65 * done / total))
-
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0), headers={"User-Agent": USER_AGENT}
-        ) as client:
-            await asyncio.gather(*(read(p, client) for p in papers))
-
-        with_text = sum(1 for p in papers if p.get("full_text"))
-        logger.info(f"[Collect] Project {project_id}: {total} papers, {with_text} with full text")
-
-        async with AsyncSessionLocal() as db:
-            await replace_papers(db, project_id, papers)
-            await db.execute(
-                update(ResearchProject)
-                .where(ResearchProject.id == project_id)
-                .values(
-                    status=ProjectStatus.COLLECTED.value,
-                    progress=100,
-                    current_step=None,
-                    finished_at=_now(),
-                    heartbeat_at=_now(),
-                )
-            )
-            await db.commit()
+        await _read_and_save(project_id, papers, fetch_text)
     except Exception as exc:
         if isinstance(exc, CollectionError):
             logger.info(f"[Collect] Failed: {exc}")
@@ -257,3 +242,56 @@ async def _run(
             logger.exception(f"[Collect] Could not record failure for project {project_id}")
     finally:
         beat.cancel()
+
+
+async def _search_or_fail(
+    search: SearchFn, topic: str, max_papers: int, project_id: int
+) -> List[Dict[str, Any]]:
+    try:
+        return await search(topic, max_papers)
+    except Exception as exc:
+        logger.exception(f"[Collect] Search failed for project {project_id}")
+        raise CollectionError(
+            "The paper search services couldn't be reached. Please try again shortly."
+        ) from exc
+
+
+async def _read_and_save(
+    project_id: int, papers: List[Dict[str, Any]], fetch_text: FetchTextFn
+) -> None:
+    total = len(papers)
+    await _set(project_id, current_step=f"Reading {total} papers", progress=25)
+    done = 0
+    semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+
+    async def read(paper: Dict[str, Any], client: httpx.AsyncClient) -> None:
+        nonlocal done
+        paper["full_text"] = await reuse_text(paper.get("doi"), paper.get("pdf_url"))
+        if not paper["full_text"] and paper.get("pdf_url"):
+            async with semaphore:
+                paper["full_text"] = await fetch_text(client, paper["pdf_url"])
+        done += 1
+        await _set(project_id, progress=25 + int(65 * done / total))
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0), headers={"User-Agent": USER_AGENT}
+    ) as client:
+        await asyncio.gather(*(read(p, client) for p in papers))
+
+    with_text = sum(1 for p in papers if p.get("full_text"))
+    logger.info(f"[Collect] Project {project_id}: {total} papers, {with_text} with full text")
+
+    async with AsyncSessionLocal() as db:
+        await replace_papers(db, project_id, papers)
+        await db.execute(
+            update(ResearchProject)
+            .where(ResearchProject.id == project_id)
+            .values(
+                status=ProjectStatus.COLLECTED.value,
+                progress=100,
+                current_step=None,
+                finished_at=_now(),
+                heartbeat_at=_now(),
+            )
+        )
+        await db.commit()

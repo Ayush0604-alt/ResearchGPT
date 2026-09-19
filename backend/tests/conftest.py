@@ -136,3 +136,16 @@ def make_project(client):
         return resp.json()["id"]
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _no_real_paper_apis(monkeypatch):
+    """Tests must never reach the real search APIs or download PDFs. Tests that
+    exercise these paths install their own fakes (monkeypatch or respx)."""
+    from app.services import collection_service
+
+    async def refuse(*args, **kwargs):
+        raise AssertionError("Test tried to call a real paper API; install a fake.")
+
+    for name in ("default_search", "default_candidates", "default_fetch_text"):
+        monkeypatch.setattr(collection_service, name, refuse)

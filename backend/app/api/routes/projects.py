@@ -15,13 +15,17 @@ from app.db.session import get_db
 from app.models.models import ResearchProject
 from app.schemas.schemas import (
     AnalysisIn,
+    Candidate,
     CollectRequest,
     PaperExtractionIn,
     ProjectCreate,
     ProjectList,
     ProjectOut,
+    SearchOut,
+    SearchRequest,
 )
 from app.services import analysis_service, collection_service
+from app.services.search import SearchUnavailable
 
 router = APIRouter()
 
@@ -51,6 +55,9 @@ async def create_project(
         topic=body.topic,
         title=title,
         description=body.description,
+        year_from=body.year_from,
+        year_to=body.year_to,
+        sources=body.sources,
     )
     db.add(project)
     await db.flush()
@@ -97,9 +104,28 @@ async def collect_papers(
     project: ResearchProject = Depends(get_owned_project),
     db: AsyncSession = Depends(get_db),
 ):
-    """Start the server-side job: search, read open-access PDFs, store the text."""
+    """Start the server-side job: read open-access PDFs and store the text.
+
+    With `candidate_ids` (chosen by screening in the browser) only those papers
+    are read; without, the topic is searched directly.
+    """
     if collection_service.is_active(project):
         raise HTTPException(409, "Papers are already being collected for this project.")
+    selected = None
+    if body.candidate_ids is not None:
+        await db.refresh(project, ["candidates"])
+        by_id = {c["id"]: c for c in project.candidates or []}
+        missing = [i for i in body.candidate_ids if i not in by_id]
+        if missing:
+            raise HTTPException(409, "Those papers aren't in this project's latest search.")
+        relevance = {r.id: r for r in body.relevance}
+        selected = []
+        for cid in body.candidate_ids:
+            paper = dict(by_id[cid])
+            if cid in relevance:
+                paper["relevance_score"] = relevance[cid].score
+                paper["relevance_reason"] = relevance[cid].reason
+            selected.append(paper)
     # One collection per user at a time: each one fans out to several APIs.
     others = (
         await db.scalars(
@@ -122,8 +148,56 @@ async def collect_papers(
     await db.refresh(project)
     # get_db commits the new status before the response goes out, and the job
     # runs after that, so it always sees a committed 'collecting' row.
-    background_tasks.add_task(collection_service.run, project.id, project.topic, body.max_papers)
+    background_tasks.add_task(
+        collection_service.run, project.id, project.topic, body.max_papers, selected=selected
+    )
     return project
+
+
+MAX_CANDIDATES = 60
+
+
+@router.post("/{project_id}/search", response_model=SearchOut)
+async def search_candidates(
+    body: SearchRequest,
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search every source with the project's topic plus the planned queries and
+    keep the results as candidates for screening in the browser."""
+    if collection_service.is_active(project):
+        raise HTTPException(409, "Papers are already being collected for this project.")
+    queries = list(dict.fromkeys([project.topic, *body.queries]))  # topic first, no repeats
+    try:
+        records = await collection_service.default_candidates(
+            queries,
+            MAX_CANDIDATES,
+            year_from=project.year_from,
+            year_to=project.year_to,
+            sources=project.sources,
+        )
+    except SearchUnavailable:
+        raise HTTPException(
+            503, "The paper search services couldn't be reached. Please try again shortly."
+        ) from None
+    candidates = [{"id": i, **record} for i, record in enumerate(records)]
+    project.candidates = candidates
+    await db.flush()
+    return SearchOut(
+        candidates=[
+            Candidate(
+                id=c["id"],
+                title=c.get("title") or "",
+                authors=c.get("authors") or [],
+                abstract=c.get("abstract") or "",
+                year=c.get("year"),
+                source=c.get("source") or "",
+                doi=c.get("doi"),
+                has_pdf=bool(c.get("pdf_url")),
+            )
+            for c in candidates
+        ]
+    )
 
 
 @router.put("/{project_id}/papers/{paper_id}/extraction", status_code=204)

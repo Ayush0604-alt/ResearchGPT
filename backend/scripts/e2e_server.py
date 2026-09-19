@@ -104,7 +104,11 @@ def use_fake_sources() -> None:
     async def fetch_text(client, url):
         return f"Full text of {url}. " * 40
 
+    async def candidates(queries, limit, year_from=None, year_to=None, sources=None):
+        return [dict(p) for p in FAKE_PAPERS]
+
     collection_service.default_search = search
+    collection_service.default_candidates = candidates
     collection_service.default_fetch_text = fetch_text
 
 

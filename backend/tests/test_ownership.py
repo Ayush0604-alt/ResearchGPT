@@ -16,6 +16,7 @@ ROUTES = [
     ("DELETE", "/chat/history/{pid}"),
     ("POST", "/chat/{pid}/messages"),
     ("POST", "/projects/{pid}/collect"),
+    ("POST", "/projects/{pid}/search"),
     ("GET", "/papers/{pid}/texts"),
     ("PUT", "/projects/{pid}/papers/1/extraction"),
     ("PUT", "/projects/{pid}/analysis"),

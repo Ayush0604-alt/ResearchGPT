@@ -3,9 +3,16 @@ Pydantic v2 schemas for request/response validation.
 """
 
 from datetime import datetime
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 # Trimmed strings with bounds. DB columns: title/topic String(500).
 Topic = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=300)]
@@ -57,10 +64,23 @@ class UserOut(BaseModel):
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 
+SourceName = Literal["semantic_scholar", "openalex", "arxiv", "europepmc"]
+Year = Annotated[int, Field(ge=1900, le=2100)]
+
+
 class ProjectCreate(BaseModel):
     topic: Topic
     title: Optional[Title] = None
     description: Optional[Description] = None
+    year_from: Optional[Year] = None
+    year_to: Optional[Year] = None
+    sources: Optional[List[SourceName]] = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _years_in_order(self):
+        if self.year_from and self.year_to and self.year_from > self.year_to:
+            raise ValueError("year_from must not be after year_to")
+        return self
 
     @field_validator("title", "description", mode="before")
     @classmethod
@@ -78,6 +98,9 @@ class ProjectOut(BaseModel):
     topic: str
     description: Optional[str] = None
     status: str
+    year_from: Optional[int] = None
+    year_to: Optional[int] = None
+    sources: Optional[List[str]] = None
     progress: int = 0
     current_step: Optional[str] = None
     error: Optional[str] = None
@@ -108,6 +131,9 @@ class PaperOut(BaseModel):
     source: Optional[str] = None
     status: str
     has_full_text: bool = False
+    doi: Optional[str] = None
+    relevance_score: Optional[int] = None
+    relevance_reason: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -184,8 +210,41 @@ class AnalysisIn(BaseModel):
 # ── Collection ────────────────────────────────────────────────────────────────
 
 
+Query = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=200)]
+
+
+class SearchRequest(BaseModel):
+    """Search queries planned in the browser (the topic itself is always added)."""
+
+    queries: List[Query] = Field(default_factory=list, max_length=5)
+
+
+class Candidate(BaseModel):
+    id: int
+    title: str
+    authors: List[str] = []
+    abstract: str = ""
+    year: Optional[int] = None
+    source: str = ""
+    doi: Optional[str] = None
+    has_pdf: bool = False
+
+
+class SearchOut(BaseModel):
+    candidates: List[Candidate]
+
+
+class Relevance(BaseModel):
+    id: int
+    score: int = Field(ge=0, le=10)
+    reason: Annotated[str, StringConstraints(max_length=300)] = ""
+
+
 class CollectRequest(BaseModel):
     max_papers: int = Field(default=10, ge=1, le=25)
+    # Candidates chosen by screening. Without them the topic is searched directly.
+    candidate_ids: Optional[List[int]] = Field(default=None, min_length=1, max_length=25)
+    relevance: List[Relevance] = Field(default_factory=list, max_length=100)
 
 
 # ── Literature Review ─────────────────────────────────────────────────────────
