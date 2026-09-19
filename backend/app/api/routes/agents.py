@@ -11,6 +11,7 @@ Fixes:
 
 import json
 import time
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from loguru import logger
@@ -59,7 +60,11 @@ async def fail_interrupted_runs() -> int:
         result = await db.execute(
             update(ResearchProject)
             .where(ResearchProject.status == ProjectStatus.RUNNING.value)
-            .values(status=ProjectStatus.FAILED.value)
+            .values(
+                status=ProjectStatus.FAILED.value,
+                error="This run was interrupted by a server restart. Please run it again.",
+                finished_at=datetime.now(timezone.utc),
+            )
         )
         await db.commit()
     if result.rowcount:
@@ -99,6 +104,9 @@ async def run_agents(
 
     project.status = ProjectStatus.RUNNING.value
     project.task_id = task_id
+    project.error = None
+    project.started_at = datetime.now(timezone.utc)
+    project.finished_at = None
     await db.flush()
 
     background_tasks.add_task(
@@ -239,6 +247,7 @@ async def _run_workflow_background(
                         conclusion=lit.get("conclusion"),
                         trends=final_state.get("trends"),
                         gaps=final_state.get("gaps"),
+                        comparison=final_state.get("comparison"),
                     )
                 )
 
@@ -263,6 +272,7 @@ async def _run_workflow_background(
             proj = proj_result.scalar_one_or_none()
             if proj:
                 proj.status = ProjectStatus.COMPLETED.value
+                proj.finished_at = datetime.now(timezone.utc)
             await db.commit()
 
         _task_store.setdefault(task_id, {}).update(
@@ -289,6 +299,8 @@ async def _run_workflow_background(
                 proj = res.scalar_one_or_none()
                 if proj:
                     proj.status = ProjectStatus.FAILED.value
+                    proj.error = _user_facing_error(e)
+                    proj.finished_at = datetime.now(timezone.utc)
                 await db.commit()
         except Exception as inner_exc:
             logger.error(f"[Background] Failed to update project status: {inner_exc}")

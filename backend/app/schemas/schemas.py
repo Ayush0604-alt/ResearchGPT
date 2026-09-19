@@ -79,6 +79,11 @@ class ProjectOut(BaseModel):
     description: Optional[str] = None
     status: str
     task_id: Optional[str] = None
+    progress: int = 0
+    current_step: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -193,6 +198,7 @@ class LiteratureReviewOut(BaseModel):
     conclusion: Optional[str] = None
     trends: Optional[str] = None
     gaps: Optional[str] = None
+    comparison: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

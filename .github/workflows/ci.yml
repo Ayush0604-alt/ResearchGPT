@@ -42,6 +42,12 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+      # The suite leaves the test DB migrated to head: fail if models and migrations differ.
+      - name: alembic check
+        run: alembic check
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:test@127.0.0.1:5432/researchgpt_test
+          SYNC_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/researchgpt_test
 
   frontend:
     runs-on: ubuntu-latest

@@ -43,6 +43,7 @@ async def get_review_markdown(
     md = f"# Literature Review\n\n## Introduction\n{review.introduction or ''}\n\n"
     md += f"## Survey\n{review.body or ''}\n\n"
     md += f"## Discussion\n{review.discussion or ''}\n\n"
+    md += f"## Comparison\n{review.comparison or ''}\n\n"
     md += f"## Trends\n{review.trends or ''}\n\n"
     md += f"## Research Gaps\n{review.gaps or ''}\n\n"
     md += f"## Conclusion\n{review.conclusion or ''}\n"

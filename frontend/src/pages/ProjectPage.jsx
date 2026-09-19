@@ -79,7 +79,7 @@ export default function ProjectPage() {
     setStarting(true)
     try {
       const { data } = await agentsAPI.run({ project_id: parseInt(id), max_papers: 10 })
-      setProject((p) => ({ ...p, status: 'running', task_id: data.task_id }))
+      setProject((p) => ({ ...p, status: 'running', task_id: data.task_id, error: null }))
       setTaskStatus(data)
       poll(data.task_id)
       toast.success('Pipeline started!')
@@ -109,8 +109,8 @@ export default function ProjectPage() {
         } else if (data.status === 'failed') {
           clearInterval(pollRef.current)
           setStarting(false)
-          setProject((p) => ({ ...p, status: 'failed' }))
-          toast.error('Pipeline failed: ' + (data.error || 'Unknown error'))
+          setProject((p) => ({ ...p, status: 'failed', error: data.error }))
+          toast.error('Pipeline failed')
         }
       } catch (err) {
         // 404: the task is gone (e.g. the server restarted mid-run). Stop polling
@@ -225,6 +225,12 @@ export default function ProjectPage() {
           </span>
         )}
       </div>
+
+      {isFailed && project.error && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+          {project.error}
+        </p>
+      )}
 
       {/* Pipeline progress */}
       {(isRunning || (taskStatus && isCompleted)) && (

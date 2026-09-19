@@ -9,6 +9,7 @@ const TABS = [
   { key: 'introduction', label: 'Introduction' },
   { key: 'body', label: 'Survey' },
   { key: 'discussion', label: 'Discussion' },
+  { key: 'comparison', label: 'Comparison' },
   { key: 'trends', label: 'Trends' },
   { key: 'gaps', label: 'Gaps' },
   { key: 'conclusion', label: 'Conclusion' },

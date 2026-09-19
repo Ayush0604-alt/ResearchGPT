@@ -20,6 +20,7 @@ def fake_workflow(monkeypatch):
             "literature_review": {"introduction": "intro"},
             "trends": "t",
             "gaps": "g",
+            "comparison": "A vs B",
         }
 
     monkeypatch.setattr(agents_route, "run_research_workflow", _fake)
@@ -54,6 +55,11 @@ async def test_status_hidden_from_other_users(client, make_user, make_project, f
 
     review = await client.get(f"/reviews/{pid}", headers=alice["headers"])
     assert review.json()["introduction"] == "intro"
+    assert review.json()["comparison"] == "A vs B"
+
+    project = (await client.get(f"/projects/{pid}", headers=alice["headers"])).json()
+    assert project["error"] is None
+    assert project["started_at"] and project["finished_at"]
 
 
 async def _set_status(pid, status, task_id=None):
@@ -74,7 +80,9 @@ async def test_restart_fails_interrupted_runs(client, make_user, make_project):
     assert await fail_interrupted_runs() == 1
 
     h = alice["headers"]
-    assert (await client.get(f"/projects/{running}", headers=h)).json()["status"] == "failed"
+    interrupted = (await client.get(f"/projects/{running}", headers=h)).json()
+    assert interrupted["status"] == "failed"
+    assert "restart" in interrupted["error"]
     assert (await client.get(f"/projects/{done}", headers=h)).json()["status"] == "completed"
 
 
@@ -143,6 +151,8 @@ async def test_run_with_no_papers_fails_with_reason(client, make_user, make_proj
     assert status["status"] == "failed"
     assert "No papers" in status["error"]
     assert project["status"] == "failed"
+    assert "No papers" in project["error"]  # survives a reload
+    assert project["finished_at"] is not None
 
 
 async def test_run_with_empty_review_fails_and_keeps_old_results(
