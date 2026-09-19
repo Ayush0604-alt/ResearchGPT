@@ -42,7 +42,7 @@ async def test_max_papers_bounds(client, make_user, make_project, max_papers):
     user = await make_user()
     pid = await make_project(user)
     resp = await client.post(
-        "/agents/run", json={"project_id": pid, "max_papers": max_papers}, headers=user["headers"]
+        f"/projects/{pid}/collect", json={"max_papers": max_papers}, headers=user["headers"]
     )
     assert resp.status_code == 422
 

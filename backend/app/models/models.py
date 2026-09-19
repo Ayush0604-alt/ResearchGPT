@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -20,8 +20,9 @@ TZDateTime = DateTime(timezone=True)
 
 class ProjectStatus(str, enum.Enum):
     PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
+    COLLECTING = "collecting"  # server job: search + read papers
+    COLLECTED = "collected"  # papers ready; the browser runs the analysis
+    COMPLETED = "completed"  # review saved
     FAILED = "failed"
 
 
@@ -68,13 +69,14 @@ class ResearchProject(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     # Store as plain string — avoids SQLAlchemy Enum type migration complications
     status: Mapped[str] = mapped_column(String(50), default=ProjectStatus.PENDING.value)
-    task_id: Mapped[Optional[str]] = mapped_column(String(255))
     # Run tracking. `error` holds a user-safe message for the last failed run.
     progress: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     current_step: Mapped[Optional[str]] = mapped_column(String(100))
     error: Mapped[Optional[str]] = mapped_column(Text)
     started_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
     finished_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
+    # Refreshed by a running collection job; a stale value means the job died.
+    heartbeat_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime, server_default=func.now(), onupdate=func.now()
@@ -108,11 +110,12 @@ class Paper(Base):
     year: Mapped[Optional[int]] = mapped_column(Integer)
     url: Mapped[Optional[str]] = mapped_column(String(2000))
     pdf_url: Mapped[Optional[str]] = mapped_column(String(2000))
-    pdf_path: Mapped[Optional[str]] = mapped_column(String(500))
     source: Mapped[Optional[str]] = mapped_column(String(100))
     external_id: Mapped[Optional[str]] = mapped_column(String(255))
     doi: Mapped[Optional[str]] = mapped_column(String(255), index=True)
-    full_text: Mapped[Optional[str]] = mapped_column(Text)
+    # Extracted PDF text (up to ~150k chars). Deferred: load it explicitly
+    # with undefer(Paper.full_text) where it's needed.
+    full_text: Mapped[Optional[str]] = mapped_column(Text, deferred=True)
     status: Mapped[str] = mapped_column(String(50), default=PaperStatus.FOUND.value)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
 
@@ -123,6 +126,10 @@ class Paper(Base):
     findings: Mapped[Optional["PaperFindings"]] = relationship(
         "PaperFindings", back_populates="paper", uselist=False, cascade="all, delete-orphan"
     )
+
+
+# Cheap flag for listings, without loading the text itself.
+Paper.has_full_text = column_property(Paper.full_text.is_not(None))
 
 
 # ── Paper Summaries ───────────────────────────────────────────────────────────

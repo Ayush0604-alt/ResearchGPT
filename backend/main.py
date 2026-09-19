@@ -1,10 +1,6 @@
 """
-ResearchGPT — FastAPI Application Entry Point
-
-Fixes:
-- Removed metadata.create_all (rely on Alembic only)
-- Ensured all storage directories are created on startup
-- GZipMiddleware and CORSMiddleware properly ordered
+ResearchGPT — FastAPI Application Entry Point.
+The schema is managed by Alembic only (no create_all).
 """
 
 import os
@@ -13,12 +9,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from loguru import logger
 
-from app.api.routes import agents, auth, chat, papers, projects, reviews
-from app.api.routes.agents import fail_interrupted_runs
+from app.api.routes import auth, chat, papers, projects, reviews
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.db.session import engine
+from app.db.session import AsyncSessionLocal, engine
+from app.services import collection_service
 
 setup_logging()
 
@@ -26,12 +23,16 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Startup: ensure storage directories exist; fail runs cut off by a restart.
+    Startup: ensure the log directory exists; fail collection jobs whose
+    heartbeat went stale (e.g. cut off by a restart).
     Shutdown: dispose async engine connection pool.
     """
-    os.makedirs(settings.PDF_STORAGE_DIR, exist_ok=True)
     os.makedirs("./logs", exist_ok=True)
-    await fail_interrupted_runs()
+    async with AsyncSessionLocal() as db:
+        stale = await collection_service.fail_stale_collections(db)
+        await db.commit()
+    if stale:
+        logger.warning(f"[Startup] Marked {stale} interrupted collection(s) as failed")
     yield
     await engine.dispose()
 
@@ -59,7 +60,6 @@ PREFIX = settings.API_V1_PREFIX
 app.include_router(auth.router, prefix=f"{PREFIX}/auth", tags=["Auth"])
 app.include_router(projects.router, prefix=f"{PREFIX}/projects", tags=["Projects"])
 app.include_router(papers.router, prefix=f"{PREFIX}/papers", tags=["Papers"])
-app.include_router(agents.router, prefix=f"{PREFIX}/agents", tags=["Agents"])
 app.include_router(reviews.router, prefix=f"{PREFIX}/reviews", tags=["Reviews"])
 app.include_router(chat.router, prefix=f"{PREFIX}/chat", tags=["Chat"])
 

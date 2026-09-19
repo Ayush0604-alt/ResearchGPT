@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import ResearchProject
+from app.services import collection_service
 
 
 async def load_owned_project(db: AsyncSession, project_id: int, user_id: int) -> ResearchProject:
@@ -24,6 +25,11 @@ async def load_owned_project(db: AsyncSession, project_id: int, user_id: int) ->
     )
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    if collection_service.expire_if_stale(project):
+        # Refresh: the flush expires server-set columns (updated_at), and a lazy
+        # load during response serialization isn't possible with async sessions.
+        await db.flush()
+        await db.refresh(project)
     return project
 
 

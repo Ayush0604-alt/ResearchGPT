@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Storage dirs
-RUN mkdir -p storage/pdfs logs
+RUN mkdir -p logs
 
 EXPOSE 8000
 

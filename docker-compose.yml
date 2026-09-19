@@ -29,7 +29,6 @@ services:
       DATABASE_URL:      postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/researchgpt
       SYNC_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/researchgpt
     volumes:
-      - ./backend/storage:/app/storage
       - ./backend/logs:/app/logs
     ports:
       - "127.0.0.1:8000:8000"   # the frontend reaches the API through nginx

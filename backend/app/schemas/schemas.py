@@ -81,7 +81,6 @@ class ProjectOut(BaseModel):
     topic: str
     description: Optional[str] = None
     status: str
-    task_id: Optional[str] = None
     progress: int = 0
     current_step: Optional[str] = None
     error: Optional[str] = None
@@ -111,6 +110,7 @@ class PaperOut(BaseModel):
     url: Optional[str] = None
     source: Optional[str] = None
     status: str
+    has_full_text: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -140,20 +140,11 @@ class FindingsOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Agents ────────────────────────────────────────────────────────────────────
+# ── Collection ────────────────────────────────────────────────────────────────────
 
 
-class AgentRunRequest(BaseModel):
-    project_id: int
+class CollectRequest(BaseModel):
     max_papers: int = Field(default=10, ge=1, le=25)
-
-
-class AgentStatusResponse(BaseModel):
-    task_id: str
-    status: str  # pending | running | completed | failed
-    progress: Optional[int] = None  # 0-100
-    current_agent: Optional[str] = None
-    error: Optional[str] = None
 
 
 # ── Literature Review ─────────────────────────────────────────────────────────
