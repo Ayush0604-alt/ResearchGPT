@@ -2,11 +2,14 @@
 Projects Routes: /api/projects
 """
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_owned_project
+from app.core.config import settings
 from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import ResearchProject
@@ -29,6 +32,19 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
+    since = datetime.now(timezone.utc) - timedelta(days=1)
+    created_today = await db.scalar(
+        select(func.count())
+        .select_from(ResearchProject)
+        .where(ResearchProject.user_id == user_id, ResearchProject.created_at >= since)
+    )
+    if created_today >= settings.MAX_PROJECTS_PER_DAY:
+        raise HTTPException(
+            429,
+            f"You've created {settings.MAX_PROJECTS_PER_DAY} projects in the last 24 hours. "
+            "Please try again later.",
+        )
+
     title = body.title or f"Research: {body.topic}"
     project = ResearchProject(
         user_id=user_id,
@@ -84,6 +100,23 @@ async def collect_papers(
     """Start the server-side job: search, read open-access PDFs, store the text."""
     if collection_service.is_active(project):
         raise HTTPException(409, "Papers are already being collected for this project.")
+    # One collection per user at a time: each one fans out to several APIs.
+    others = (
+        await db.scalars(
+            select(ResearchProject).where(
+                ResearchProject.user_id == project.user_id,
+                ResearchProject.id != project.id,
+                ResearchProject.status == "collecting",
+            )
+        )
+    ).all()
+    busy = next((p for p in others if collection_service.is_active(p)), None)
+    if busy:
+        raise HTTPException(
+            429,
+            f'Papers are still being collected for "{busy.title}". '
+            "Please wait for that to finish.",
+        )
     collection_service.start(project)
     await db.flush()
     await db.refresh(project)

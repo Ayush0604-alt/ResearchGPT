@@ -10,10 +10,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from loguru import logger
+from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import auth, chat, papers, projects, reviews
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.rate_limit import limiter, rate_limit_exceeded
 from app.db.session import AsyncSessionLocal, engine
 from app.services import collection_service
 
@@ -45,6 +47,8 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded)
 
 # CORS must come before GZip
 app.add_middleware(

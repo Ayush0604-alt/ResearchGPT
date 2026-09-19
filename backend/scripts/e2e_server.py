@@ -31,6 +31,7 @@ os.environ.update(
         "APP_ENV": "development",
         "SECRET_KEY": "e2e-secret-key-that-is-at-least-32-characters",
         "BCRYPT_ROUNDS": "4",
+        "RATE_LIMIT_ENABLED": "false",
     }
 )
 sys.path.insert(0, BACKEND_DIR)

@@ -2,10 +2,11 @@
 Auth Routes: /api/auth
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
     get_current_user_id,
@@ -20,7 +21,8 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
-async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/hour")
+async def register(request: Request, body: UserRegister, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -42,7 +44,8 @@ async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: UserLogin, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 

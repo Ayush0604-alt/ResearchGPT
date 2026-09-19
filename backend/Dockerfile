@@ -20,4 +20,7 @@ RUN mkdir -p logs
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+# --proxy-headers: take the client IP from X-Forwarded-For (rate limits need it).
+# Uvicorn trusts that header only from FORWARDED_ALLOW_IPS (default 127.0.0.1):
+# set it to your reverse proxy's address, never to "*" if the API is exposed.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers"]

@@ -32,6 +32,7 @@ os.environ.update(
         "SECRET_KEY": "test-secret-key-that-is-at-least-32-characters-long",
         "DEBUG": "false",
         "BCRYPT_ROUNDS": "4",  # cheap hashes; production uses 12
+        "RATE_LIMIT_ENABLED": "false",  # tests register many users; see test_limits.py
     }
 )
 
