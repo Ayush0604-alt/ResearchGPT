@@ -19,6 +19,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Test database (throwaway, in-memory) ─────────────────────────────────────
+  # docker compose --profile test up -d test-db
+  test-db:
+    image: postgres:15-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB:       researchgpt_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "55432:5432"
+
   # ── Redis (for Celery task queue — optional) ─────────────────────────────────
   redis:
     image: redis:7-alpine

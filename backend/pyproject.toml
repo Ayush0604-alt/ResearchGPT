@@ -13,6 +13,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+known-third-party = ["alembic"]  # not the local alembic/ migrations folder
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
