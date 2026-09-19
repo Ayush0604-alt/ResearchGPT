@@ -3,35 +3,26 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { reviewsAPI } from './api'
-import { taskPollInterval, useReview } from './queries'
-import type { TaskStatus } from './types'
+import { projectPollInterval, useReview } from './queries'
+import type { Project } from './types'
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   reviewsAPI: { get: vi.fn(), markdown: vi.fn() },
 }))
 
-const task = (status: TaskStatus['status']): TaskStatus => ({
-  task_id: 't',
-  status,
-  progress: 0,
-  current_agent: null,
-  error: null,
-})
+const project = (status: Project['status']) => ({ status }) as Project
 
-describe('taskPollInterval', () => {
-  it('keeps polling while a run is in progress', () => {
-    expect(taskPollInterval({ data: task('running'), error: null })).toBe(2500)
-    expect(taskPollInterval({ data: undefined, error: null })).toBe(2500)
+describe('projectPollInterval', () => {
+  it('polls while the server is collecting papers', () => {
+    expect(projectPollInterval(project('collecting'))).toBe(2000)
   })
 
-  it('stops on completion or failure', () => {
-    expect(taskPollInterval({ data: task('completed'), error: null })).toBe(false)
-    expect(taskPollInterval({ data: task('failed'), error: null })).toBe(false)
-  })
-
-  it('stops when the task is gone (e.g. a 404 after a restart)', () => {
-    expect(taskPollInterval({ data: task('running'), error: new Error('404') })).toBe(false)
+  it('does not poll in any other state', () => {
+    for (const status of ['pending', 'collected', 'completed', 'failed'] as const) {
+      expect(projectPollInterval(project(status))).toBe(false)
+    }
+    expect(projectPollInterval(undefined)).toBe(false)
   })
 })
 

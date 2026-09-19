@@ -1,13 +1,17 @@
 import axios, { type AxiosError } from 'axios'
 import { useAuthStore } from '../store/authStore'
 import type {
+  AnalysisIn,
   ChatAnswer,
   ChatHistory,
   LiteratureReview,
   Paper,
+  PaperExtractionIn,
+  PaperFindings,
+  PaperForAnalysis,
+  PaperSummary,
   Project,
   ProjectList,
-  TaskStatus,
   TokenResponse,
   User,
 } from './types'
@@ -52,18 +56,21 @@ export const projectsAPI = {
     api.post<Project>('/projects', data),
   get: (id: number | string) => api.get<Project>(`/projects/${id}`),
   delete: (id: number | string) => api.delete(`/projects/${id}`),
-}
-
-// ── Agents ────────────────────────────────────────────────────────────────────
-export const agentsAPI = {
-  run: (data: { project_id: number; max_papers?: number }) =>
-    api.post<TaskStatus>('/agents/run', data),
-  status: (taskId: string) => api.get<TaskStatus>(`/agents/status/${taskId}`),
+  /** Start the server job that searches for papers and reads their PDFs. */
+  collect: (id: number | string, maxPapers = 10) =>
+    api.post<Project>(`/projects/${id}/collect`, { max_papers: maxPapers }),
+  saveExtraction: (id: number | string, paperId: number, data: PaperExtractionIn) =>
+    api.put(`/projects/${id}/papers/${paperId}/extraction`, data),
+  saveAnalysis: (id: number | string, data: AnalysisIn) =>
+    api.put<Project>(`/projects/${id}/analysis`, data),
 }
 
 // ── Papers ────────────────────────────────────────────────────────────────────
 export const papersAPI = {
   list: (pid: number | string) => api.get<Paper[]>(`/papers/${pid}`),
+  texts: (pid: number | string) => api.get<PaperForAnalysis[]>(`/papers/${pid}/texts`),
+  summaries: (pid: number | string) => api.get<PaperSummary[]>(`/papers/${pid}/summaries`),
+  findings: (pid: number | string) => api.get<PaperFindings[]>(`/papers/${pid}/findings`),
 }
 
 // ── Reviews ───────────────────────────────────────────────────────────────────

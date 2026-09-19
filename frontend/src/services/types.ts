@@ -1,6 +1,8 @@
 // Response shapes of the FastAPI backend (see backend/app/schemas/schemas.py).
 
-export type ProjectStatus = 'pending' | 'running' | 'completed' | 'failed'
+// collecting: server job (search + read PDFs); collected: papers ready for the
+// browser-side analysis; completed: review saved.
+export type ProjectStatus = 'pending' | 'collecting' | 'collected' | 'completed' | 'failed'
 
 export interface User {
   id: number
@@ -22,7 +24,6 @@ export interface Project {
   topic: string
   description: string | null
   status: ProjectStatus
-  task_id: string | null
   progress: number
   current_step: string | null
   error: string | null
@@ -47,7 +48,61 @@ export interface Paper {
   url: string | null
   source: string | null
   status: string
+  has_full_text: boolean
   created_at: string
+}
+
+/** A paper with its extracted text, for the browser-side analysis. */
+export interface PaperForAnalysis {
+  id: number
+  title: string
+  authors: string | null
+  year: number | null
+  abstract: string | null
+  full_text: string | null
+  url: string | null
+  has_extraction: boolean
+}
+
+export interface PaperSummary {
+  paper_id: number
+  summary: string | null
+  methodology: string | null
+  conclusion: string | null
+}
+
+export interface PaperFindings {
+  paper_id: number
+  model_used: string | null
+  dataset_used: string | null
+  accuracy: string | null
+  contributions: string | null
+  limitations: string | null
+  raw_json: Record<string, unknown> | null
+}
+
+export interface PaperExtractionIn {
+  summary: string
+  methodology: string
+  conclusion: string
+  model_used: string
+  dataset_used: string
+  metrics: string
+  contributions: string
+  limitations: string
+  key_quotes: string[]
+  model: string
+}
+
+export interface AnalysisIn {
+  introduction: string
+  body: string
+  discussion: string
+  conclusion: string
+  trends: string
+  gaps: string
+  comparison: string
+  model: string
 }
 
 export interface LiteratureReview {
@@ -85,12 +140,4 @@ export interface ChatHistory {
 export interface ChatAnswer {
   answer: string
   citations: Citation[]
-}
-
-export interface TaskStatus {
-  task_id: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'unknown'
-  progress: number | null
-  current_agent: string | null
-  error: string | null
 }

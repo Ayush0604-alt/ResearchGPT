@@ -59,9 +59,60 @@ def reset_database() -> None:
     command.upgrade(Config(os.path.join(BACKEND_DIR, "alembic.ini")), "head")
 
 
+FAKE_PAPERS = [
+    {
+        "title": "Graph Transformers for Molecular Property Prediction",
+        "authors": ["Ada Lovelace", "Alan Turing"],
+        "abstract": "We apply graph transformers to molecular benchmarks and improve ROC-AUC.",
+        "year": 2024,
+        "url": "https://example.org/papers/1",
+        "pdf_url": "https://example.org/papers/1.pdf",
+        "source": "arxiv",
+        "external_id": "e2e-1",
+    },
+    {
+        "title": "Message Passing Networks Revisited",
+        "authors": ["Grace Hopper"],
+        "abstract": "A careful re-evaluation of message passing neural networks on OGB.",
+        "year": 2023,
+        "url": "https://example.org/papers/2",
+        "pdf_url": None,
+        "source": "semantic_scholar",
+        "external_id": "e2e-2",
+    },
+    {
+        "title": "Positional Encodings for Graphs",
+        "authors": ["Katherine Johnson"],
+        "abstract": "We compare Laplacian and random-walk positional encodings for graphs.",
+        "year": 2022,
+        "url": "https://example.org/papers/3",
+        "pdf_url": "https://example.org/papers/3.pdf",
+        "source": "arxiv",
+        "external_id": "e2e-3",
+    },
+]
+
+
+def use_fake_sources() -> None:
+    """E2E runs must not depend on Semantic Scholar/arXiv/PubMed being up."""
+    from app.services import collection_service
+
+    async def search(topic, max_papers):
+        return [dict(p) for p in FAKE_PAPERS][:max_papers]
+
+    async def fetch_text(client, url):
+        return f"Full text of {url}. " * 40
+
+    collection_service.default_search = search
+    collection_service.default_fetch_text = fetch_text
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args()
     reset_database()
-    uvicorn.run("main:app", host="127.0.0.1", port=args.port, log_level="warning")
+    use_fake_sources()
+    from main import app
+
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

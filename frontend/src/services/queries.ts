@@ -2,8 +2,8 @@
 // fetching in useEffect or polling with setInterval.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { agentsAPI, chatAPI, httpStatus, papersAPI, projectsAPI, reviewsAPI } from './api'
-import type { LiteratureReview, TaskStatus } from './types'
+import { chatAPI, httpStatus, papersAPI, projectsAPI, reviewsAPI } from './api'
+import type { LiteratureReview, Project } from './types'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -11,11 +11,16 @@ export const keys = {
   papers: (id: string) => ['papers', id] as const,
   review: (id: string) => ['review', id] as const,
   chat: (id: string) => ['chat', id] as const,
-  task: (taskId: string) => ['task', taskId] as const,
+  summaries: (id: string) => ['summaries', id] as const,
+  findings: (id: string) => ['findings', id] as const,
 }
 
-const POLL_MS = 2500
-const TERMINAL: TaskStatus['status'][] = ['completed', 'failed']
+const POLL_MS = 2000
+
+/** Poll a project while the server is collecting its papers; otherwise don't. */
+export function projectPollInterval(project: Project | undefined): number | false {
+  return project?.status === 'collecting' ? POLL_MS : false
+}
 
 /** Don't retry "not found"; retry other failures twice. */
 function retryUnlessNotFound(failureCount: number, err: unknown) {
@@ -36,6 +41,8 @@ export function useProject(id: string) {
     queryKey: keys.project(id),
     queryFn: async () => (await projectsAPI.get(id)).data,
     retry: retryUnlessNotFound,
+    // Pauses while the tab is hidden (refetchIntervalInBackground is false).
+    refetchInterval: (query) => projectPollInterval(query.state.data),
   })
 }
 
@@ -68,26 +75,17 @@ export function useChatHistory(id: string) {
   })
 }
 
-/** Next poll delay for a task query, or false to stop polling. */
-export function taskPollInterval(state: { data?: TaskStatus; error: unknown }): number | false {
-  if (state.error) return false // e.g. 404: the task is gone
-  const status = state.data?.status
-  return status && TERMINAL.includes(status) ? false : POLL_MS
+export function useSummaries(id: string) {
+  return useQuery({
+    queryKey: keys.summaries(id),
+    queryFn: async () => (await papersAPI.summaries(id)).data,
+  })
 }
 
-/**
- * Poll a pipeline task until it finishes. Polling stops on a terminal status
- * or an error (a 404 means the task is gone, e.g. the server restarted), and
- * pauses while the tab is hidden.
- */
-export function useTaskStatus(taskId: string | null) {
+export function useFindings(id: string) {
   return useQuery({
-    queryKey: keys.task(taskId ?? ''),
-    queryFn: async () => (await agentsAPI.status(taskId!)).data,
-    enabled: Boolean(taskId),
-    retry: retryUnlessNotFound,
-    refetchInterval: (query) => taskPollInterval(query.state),
-    refetchIntervalInBackground: false,
+    queryKey: keys.findings(id),
+    queryFn: async () => (await papersAPI.findings(id)).data,
   })
 }
 
@@ -110,17 +108,6 @@ export function useDeleteProject() {
   })
 }
 
-export function useRunPipeline(id: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async () => (await agentsAPI.run({ project_id: Number(id), max_papers: 10 })).data,
-    onSuccess: (task) => {
-      qc.setQueryData(keys.task(task.task_id), task)
-      return qc.invalidateQueries({ queryKey: keys.project(id) })
-    },
-  })
-}
-
 export function useAskQuestion(id: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -138,11 +125,16 @@ export function useClearChat(id: string) {
   })
 }
 
-/** Refresh everything a finished run changes. */
+/** Refresh everything a run changes. */
 export function invalidateProjectResults(qc: ReturnType<typeof useQueryClient>, id: string) {
   return Promise.all(
-    [keys.project(id), keys.papers(id), keys.review(id), keys.projects].map((queryKey) =>
-      qc.invalidateQueries({ queryKey }),
-    ),
+    [
+      keys.project(id),
+      keys.papers(id),
+      keys.review(id),
+      keys.summaries(id),
+      keys.findings(id),
+      keys.projects,
+    ].map((queryKey) => qc.invalidateQueries({ queryKey })),
   )
 }

@@ -28,7 +28,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       >
         <App />
         <Toaster
-          position="top-right"
+          // Bottom: top-right toasts covered the page header's action buttons.
+          position="bottom-right"
           toastOptions={{
             style: {
               background: '#fff',
