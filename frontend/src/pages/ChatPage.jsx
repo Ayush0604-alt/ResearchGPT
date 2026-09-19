@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { Send, Loader2, ArrowLeft, Trash2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { chatAPI } from '../services/api'
+import Markdown from '../components/Markdown'
 
 const SUGGESTIONS = [
   'What models were used across papers?',
@@ -172,7 +173,11 @@ export default function ChatPage() {
                     : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                {msg.role === 'assistant' ? (
+                  <Markdown className="prose-content prose-chat">{msg.content}</Markdown>
+                ) : (
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
               </div>
 
               {/* Citations */}

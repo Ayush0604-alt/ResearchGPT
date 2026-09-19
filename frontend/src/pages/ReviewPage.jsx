@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Download, Loader2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { reviewsAPI } from '../services/api'
+import Markdown from '../components/Markdown'
 
 const TABS = [
   { key: 'introduction', label: 'Introduction' },
@@ -12,184 +13,6 @@ const TABS = [
   { key: 'gaps', label: 'Gaps' },
   { key: 'conclusion', label: 'Conclusion' },
 ]
-
-/**
- * Minimal Markdown → HTML renderer.
- *
- * Fixes:
- * - ol closing tag was </ul> — now correctly </ol>
- * - Separator rows (|---|---|) are explicitly skipped
- * - thead/tbody properly structured for tables
- */
-function renderMd(text) {
-  if (!text) return ''
-
-  const lines = text.split('\n')
-  const output = []
-  let inTable = false
-  let inList = false
-  let inOl = false
-  let inPara = false
-
-  const closePara = () => {
-    if (inPara) {
-      output.push('</p>')
-      inPara = false
-    }
-  }
-  const closeUl = () => {
-    if (inList) {
-      output.push('</ul>')
-      inList = false
-    }
-  }
-  const closeOl = () => {
-    if (inOl) {
-      output.push('</ol>')
-      inOl = false
-    }
-  } // FIX: was missing
-  const closeTable = () => {
-    if (inTable) {
-      output.push('</tbody></table>')
-      inTable = false
-    }
-  }
-
-  const closeLists = () => {
-    closeUl()
-    closeOl()
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmed = line.trim()
-
-    // Headings
-    if (/^### /.test(trimmed)) {
-      closePara()
-      closeLists()
-      closeTable()
-      output.push(`<h3>${esc(trimmed.slice(4))}</h3>`)
-      continue
-    }
-    if (/^## /.test(trimmed)) {
-      closePara()
-      closeLists()
-      closeTable()
-      output.push(`<h2>${esc(trimmed.slice(3))}</h2>`)
-      continue
-    }
-    if (/^# /.test(trimmed)) {
-      closePara()
-      closeLists()
-      closeTable()
-      output.push(`<h1>${esc(trimmed.slice(2))}</h1>`)
-      continue
-    }
-
-    // Tables — detect by leading pipe
-    if (/^\|/.test(trimmed)) {
-      // Skip separator rows like |---|---| or |:---|:---:|
-      if (/^\|[\s\-|:]+\|$/.test(trimmed)) continue
-
-      if (!inTable) {
-        closePara()
-        closeLists()
-        const nextLine = (lines[i + 1] || '').trim()
-        const isHeader = /^\|[\s\-|:]+\|$/.test(nextLine)
-        output.push('<table>')
-        if (isHeader) {
-          output.push('<thead><tr>')
-          parseCells(trimmed).forEach((c) => output.push(`<th>${inline(c)}</th>`))
-          output.push('</tr></thead><tbody>')
-          i++ // skip separator line
-          inTable = true
-          continue
-        } else {
-          output.push('<tbody>')
-          inTable = true
-        }
-      }
-
-      output.push('<tr>')
-      parseCells(trimmed).forEach((c) => output.push(`<td>${inline(c)}</td>`))
-      output.push('</tr>')
-      continue
-    }
-
-    // Unordered list items
-    if (/^[-*] /.test(trimmed)) {
-      closePara()
-      closeTable()
-      closeOl()
-      if (!inList) {
-        output.push('<ul>')
-        inList = true
-      }
-      output.push(`<li>${inline(trimmed.slice(2))}</li>`)
-      continue
-    }
-
-    // Numbered / ordered list items
-    if (/^\d+\. /.test(trimmed)) {
-      closePara()
-      closeTable()
-      closeUl()
-      if (!inOl) {
-        output.push('<ol>')
-        inOl = true
-      }
-      output.push(`<li>${inline(trimmed.replace(/^\d+\. /, ''))}</li>`)
-      continue
-    }
-
-    // Blank line — close everything open
-    if (trimmed === '') {
-      closePara()
-      closeLists()
-      closeTable()
-      continue
-    }
-
-    // Normal paragraph text
-    closeLists()
-    closeTable()
-    if (!inPara) {
-      output.push('<p>')
-      inPara = true
-    } else output.push(' ')
-    output.push(inline(trimmed))
-  }
-
-  // Close anything still open at EOF
-  closePara()
-  closeLists()
-  closeTable()
-  return output.join('')
-}
-
-function parseCells(row) {
-  return row
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((c) => c.trim())
-}
-
-function esc(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function inline(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-}
 
 export default function ReviewPage() {
   const { id } = useParams()
@@ -297,7 +120,7 @@ export default function ReviewPage() {
       {/* Content */}
       <div className="card-p min-h-64">
         {content ? (
-          <div className="prose-content" dangerouslySetInnerHTML={{ __html: renderMd(content) }} />
+          <Markdown>{content}</Markdown>
         ) : (
           <div className="text-center py-12">
             <p className="text-sm text-gray-400">No content for this section.</p>

@@ -176,4 +176,30 @@
   .prose-content blockquote {
     @apply border-l-4 border-brand-400 pl-5 text-espresso-800 italic bg-brand-50/50 py-2 rounded-r-xl;
   }
+  .prose-content a {
+    @apply text-brand-700 underline underline-offset-2 hover:text-brand-800;
+  }
+  .prose-content pre {
+    @apply bg-cream-100 border border-cream-200 rounded-xl p-4 mb-4 overflow-x-auto text-xs;
+  }
+  .prose-content pre code {
+    @apply bg-transparent border-0 p-0 text-espresso-900;
+  }
+  /* Chat bubbles: same rules, tighter rhythm */
+  .prose-chat {
+    @apply leading-relaxed;
+  }
+  .prose-chat > :last-child {
+    @apply mb-0;
+  }
+  .prose-chat h1,
+  .prose-chat h2,
+  .prose-chat h3 {
+    @apply mt-3 mb-1.5 text-sm;
+  }
+  .prose-chat p,
+  .prose-chat ul,
+  .prose-chat ol {
+    @apply mb-2;
+  }
 }
