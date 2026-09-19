@@ -51,3 +51,19 @@ async def test_api_responses_carry_security_headers(client, make_user):
     assert resp.headers["x-content-type-options"] == "nosniff"
     assert resp.headers["cache-control"] == "no-store"
     assert resp.headers["content-security-policy"].startswith("default-src 'none'")
+
+
+async def test_project_list_counts_papers(client, make_user, make_project):
+    from app.db.session import AsyncSessionLocal
+    from app.models.models import Paper
+
+    user = await make_user()
+    with_papers = await make_project(user)
+    empty = await make_project(user)
+    async with AsyncSessionLocal() as db:
+        db.add_all([Paper(project_id=with_papers, title=f"P{i}") for i in range(3)])
+        await db.commit()
+
+    listed = (await client.get("/projects", headers=user["headers"])).json()["projects"]
+    counts = {p["id"]: p["paper_count"] for p in listed}
+    assert counts == {with_papers: 3, empty: 0}

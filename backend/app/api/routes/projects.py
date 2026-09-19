@@ -13,7 +13,7 @@ from app.api.deps import get_owned_project
 from app.core.config import settings
 from app.core.security import get_current_user_id
 from app.db.session import get_db
-from app.models.models import ResearchProject
+from app.models.models import Paper, ResearchProject
 from app.schemas.schemas import (
     AnalysisIn,
     Candidate,
@@ -74,18 +74,31 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    result = await db.execute(
-        select(ResearchProject)
-        .where(ResearchProject.user_id == user_id)
-        .order_by(ResearchProject.created_at.desc())
+    paper_counts = (
+        select(Paper.project_id, func.count(Paper.id).label("n"))
+        .group_by(Paper.project_id)
+        .subquery()
     )
-    projects = result.scalars().all()
+    rows = (
+        await db.execute(
+            select(ResearchProject, func.coalesce(paper_counts.c.n, 0))
+            .outerjoin(paper_counts, paper_counts.c.project_id == ResearchProject.id)
+            .where(ResearchProject.user_id == user_id)
+            .order_by(ResearchProject.created_at.desc())
+        )
+    ).all()
+    projects = [p for p, _ in rows]
     expired = [p for p in projects if collection_service.expire_if_stale(p)]
     if expired:
         await db.flush()
         for p in expired:
             await db.refresh(p)
-    return ProjectList(projects=list(projects), total=len(projects))
+    return ProjectList(
+        projects=[
+            ProjectOut.model_validate(p).model_copy(update={"paper_count": n}) for p, n in rows
+        ],
+        total=len(rows),
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

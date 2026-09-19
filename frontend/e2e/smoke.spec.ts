@@ -41,6 +41,26 @@ test('register, create a project with only a topic, see it on the dashboard', as
   await expect(page.getByText('Research: graph neural networks')).toBeVisible()
 })
 
+test('the dashboard can be searched and filtered by status', async ({ page }) => {
+  await register(page)
+  await createProject(page, 'graph neural networks')
+  await createProject(page, 'protein folding')
+  await page.goto('/dashboard')
+  const rows = page.getByRole('row').filter({ has: page.getByRole('link') })
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first().getByRole('cell').nth(2)).toHaveText('0') // paper count
+
+  await page.getByLabel('Search projects').fill('protein')
+  await expect(rows).toHaveCount(1)
+  await expect(rows.first()).toContainText('protein folding')
+
+  await page.getByLabel('Search projects').fill('')
+  await page.getByLabel('Filter by status').selectOption('completed')
+  await expect(page.getByText('No projects match.')).toBeVisible()
+  await page.getByLabel('Filter by status').selectOption('pending')
+  await expect(rows).toHaveCount(2)
+})
+
 test('validation errors are shown as readable messages', async ({ page }) => {
   await page.goto('/register')
   await page.getByLabel('Username').fill('bad name!') // fails the API pattern

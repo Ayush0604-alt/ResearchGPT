@@ -110,6 +110,8 @@ class ProjectOut(BaseModel):
     finished_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # Filled in by the project list; single-project responses leave it at 0.
+    paper_count: int = 0
 
     model_config = {"from_attributes": True}
 

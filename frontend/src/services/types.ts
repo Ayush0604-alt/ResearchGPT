@@ -30,6 +30,8 @@ export interface Project {
   finished_at: string | null
   created_at: string
   updated_at: string
+  /** Set in the project list only. */
+  paper_count?: number
 }
 
 export type SourceName = 'semantic_scholar' | 'openalex' | 'arxiv' | 'europepmc'
