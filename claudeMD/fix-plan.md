@@ -346,7 +346,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 ## Phase 5: Find better papers
 
-### ☐ Step 31: Better sources · D§3, I§3
+### ☑ Step 31: Better sources · D§3, I§3
 - Add an **OpenAlex** client (turn its inverted-index abstracts back into text, and send a `mailto` for the polite pool). Replace PubMed with **Europe PMC**. Add a **Semantic Scholar API key**, plus NCBI and OpenAlex contact details, as server config.
 - Add an **Unpaywall** lookup by DOI to find open-access PDFs.
 - Put `arXiv` queries in quotes or join the terms with `AND`.
@@ -354,7 +354,7 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** the same topic returns noticeably more papers with a PDF than before.
 
-### ☐ Step 32: Deduplication, ranking and caching · I§3, D§5
+### ☑ Step 32: Deduplication, ranking and caching · I§3, D§5
 - Deduplicate by DOI first, then by arXiv id, then by fuzzy title match (`rapidfuzz` ratio ≥ 92).
 - Merge sources by alternating between them instead of concatenating them.
 - Use `MAX_PAPERS_PER_SEARCH` and `MAX_PAPERS_TO_DOWNLOAD`, or delete them.
@@ -362,19 +362,27 @@ Use Alembic autogenerate, then review the result by hand:
 
 **Done when:** a second identical search makes no external calls, and the deduplication tests pass.
 
-### ☐ Step 33: Query expansion and relevance screening in the browser · D§3
+### ☑ Step 33: Query expansion and relevance screening in the browser · D§3
 - Split collection into two steps. `POST /projects/{id}/search` accepts `{queries[]}` and returns candidate papers. `POST /projects/{id}/collect` accepts `{paper_ids[]}`.
 - The browser first generates 3–5 queries from the topic, then screens up to about 60 candidate abstracts with the fast model (a 0–10 score and a reason), and keeps the top N.
 - On NewProjectPage, add year-range and source filters.
 
 **Done when:** the review page lists the selected papers with their relevance reasons.
 
-### ☐ Step 34: Snowballing (optional) · D§3
+### ☑ Step 34: Snowballing (optional) · D§3
 Add a server endpoint that returns the references and citing papers of chosen papers (from OpenAlex or Semantic Scholar). The browser screens those candidates the same way as in Step 33.
 
 **Done when:** a toggle adds citation-graph candidates to screening.
 
 ---
+
+> **Phase 5 notes (2026-09-19):** 163 backend, 55 unit and 18 end-to-end tests pass.
+> - **Sources:** Semantic Scholar, OpenAlex, arXiv (terms ANDed) and Europe PMC (replaces PubMed), plus Unpaywall for PDF links. Duplicates are matched by DOI, then arXiv ID, then fuzzy title, and results are interleaved across sources.
+> - **Caches:** search results for 7 days, and extracted text reused by DOI or PDF URL.
+> - **Screening:** query planning and relevance screening run in the browser. The server's `/search` stores up to 60 candidates, and `/collect` takes the chosen IDs plus relevance scores.
+> - **Snowballing:** follows citations through OpenAlex, as an opt-in per project.
+> - **Tests:** an autouse fixture now makes real search and PDF calls fail loudly, after one test fell through to the live APIs.
+> - **Migrations:** 0006 to 0008.
 
 ## Phase 6: Read papers more deeply
 
