@@ -9,11 +9,17 @@ and papers with a DOI but no PDF link get one from Unpaywall when it exists.
 """
 
 import asyncio
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, List, Optional
 
 import httpx
 from loguru import logger
 
+from app.core.config import settings
+from app.db.session import AsyncSessionLocal
+from app.models.models import SearchCache
 from app.services.search.merge import deduplicate, interleave
 from app.services.search.records import PaperRecord
 from app.services.search.sources import SOURCES, unpaywall_pdf
@@ -25,6 +31,45 @@ UNPAYWALL_LOOKUPS = 20
 
 class SearchUnavailable(Exception):
     """Every source failed; nothing could be searched."""
+
+
+def _cache_key(name: str, query: str, limit: int, year_from, year_to) -> str:
+    request = [name, " ".join(query.lower().split()), limit, year_from, year_to]
+    return hashlib.sha256(json.dumps(request).encode()).hexdigest()
+
+
+async def _cached_search(
+    client: httpx.AsyncClient,
+    name: str,
+    query: str,
+    limit: int,
+    year_from: Optional[int],
+    year_to: Optional[int],
+) -> List[PaperRecord]:
+    """One source call, answered from the search cache when a fresh copy exists.
+    Cache problems never fail a search: they fall back to the live source."""
+    key = _cache_key(name, query, limit, year_from, year_to)
+    ttl = timedelta(days=settings.SEARCH_CACHE_DAYS)
+    try:
+        async with AsyncSessionLocal() as db:
+            row = await db.get(SearchCache, key)
+            if row and datetime.now(timezone.utc) - row.created_at < ttl:
+                return row.results
+    except Exception:
+        logger.exception("[Search] cache read failed")
+
+    results = await SOURCES[name](client, query, limit, year_from, year_to)
+
+    if settings.SEARCH_CACHE_DAYS > 0:
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.merge(
+                    SearchCache(key=key, results=results, created_at=datetime.now(timezone.utc))
+                )
+                await db.commit()
+        except Exception:
+            logger.exception("[Search] cache write failed")
+    return results
 
 
 async def _add_open_access_pdfs(client: httpx.AsyncClient, records: List[PaperRecord]) -> None:
@@ -62,7 +107,7 @@ async def search_papers(
     ) as client:
         pairs = [(name, q) for name in names for q in queries]
         results = await asyncio.gather(
-            *(SOURCES[name](client, q, per_query, year_from, year_to) for name, q in pairs),
+            *(_cached_search(client, name, q, per_query, year_from, year_to) for name, q in pairs),
             return_exceptions=True,
         )
         lists: List[List[PaperRecord]] = []

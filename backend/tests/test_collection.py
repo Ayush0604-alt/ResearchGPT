@@ -198,3 +198,35 @@ async def test_listing_projects_expires_dead_collections(client, make_user, make
     listed = (await client.get("/projects", headers=user["headers"])).json()["projects"]
 
     assert listed[0]["status"] == "failed"
+
+
+async def test_text_already_extracted_elsewhere_is_reused(
+    client, make_user, make_project, fake_sources, monkeypatch
+):
+    user = await make_user()
+    earlier = await make_project(user, topic="earlier project")
+    async with AsyncSessionLocal() as db:
+        db.add(
+            Paper(
+                project_id=earlier,
+                title="Graph transformers",
+                doi="10.1000/gt",
+                full_text="Text read last week " * 20,
+            )
+        )
+        await db.commit()
+
+    fake_sources["search"] = [PAPERS[0] | {"doi": "10.1000/gt", "pdf_url": "https://x.org/new.pdf"}]
+    fetched = []
+
+    async def fetch_text(client, url):
+        fetched.append(url)
+        return "fresh text"
+
+    monkeypatch.setattr(collection_service, "default_fetch_text", fetch_text)
+    pid = await make_project(user)
+    await client.post(f"/projects/{pid}/collect", json={}, headers=user["headers"])
+
+    assert fetched == []  # no download: the text was reused by DOI
+    texts = (await client.get(f"/papers/{pid}/texts", headers=user["headers"])).json()
+    assert texts[0]["full_text"].startswith("Text read last week")

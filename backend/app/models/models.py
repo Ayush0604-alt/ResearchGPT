@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -115,7 +116,7 @@ class Paper(Base):
     abstract: Mapped[Optional[str]] = mapped_column(Text)
     year: Mapped[Optional[int]] = mapped_column(Integer)
     url: Mapped[Optional[str]] = mapped_column(String(2000))
-    pdf_url: Mapped[Optional[str]] = mapped_column(String(2000))
+    pdf_url: Mapped[Optional[str]] = mapped_column(String(2000), index=True)
     source: Mapped[Optional[str]] = mapped_column(String(100))
     external_id: Mapped[Optional[str]] = mapped_column(String(255))
     doi: Mapped[Optional[str]] = mapped_column(String(255), index=True)
@@ -249,4 +250,18 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(TZDateTime)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+
+
+# ── Search cache ──────────────────────────────────────────────────────────────
+
+
+class SearchCache(Base):
+    """Results of one (source, query, filters) search, reused for a few days so
+    popular topics don't hit the rate-limited source APIs again."""
+
+    __tablename__ = "search_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 of the request
+    results: Mapped[list] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())

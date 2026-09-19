@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     CONTACT_EMAIL: str = ""  # sent to OpenAlex (polite pool) and required by Unpaywall
     SEMANTIC_SCHOLAR_API_KEY: str = ""  # optional; raises S2 rate limits
     OPENALEX_API_KEY: str = ""  # optional
+    SEARCH_CACHE_DAYS: int = 7  # 0 disables the search cache
 
     # ── Paper collection ───────────────────────────────────────────────────────
     # PDFs are read in memory and discarded; only extracted text is stored.

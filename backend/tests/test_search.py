@@ -180,8 +180,8 @@ async def test_one_failing_source_is_tolerated_but_all_failing_is_an_error():
         assert len(papers) == 2
 
         mock.get(ARXIV).mock(return_value=httpx.Response(404))
-        with pytest.raises(SearchUnavailable):
-            await search_papers(["x"], limit=5, sources=["semantic_scholar", "arxiv"])
+        with pytest.raises(SearchUnavailable):  # a new query: not answered from the cache
+            await search_papers(["y"], limit=5, sources=["semantic_scholar", "arxiv"])
 
 
 async def test_year_filters_and_api_keys_are_sent(monkeypatch):
@@ -229,3 +229,43 @@ def test_dedup_matches_near_identical_titles_and_interleave_takes_turns():
     assert merged[0]["doi"] == "10.1/x" and merged[0]["abstract"].endswith("More.")
     assert deduplicate([{"title": "No abstract", "abstract": "", "source": "x"}]) == []
     assert [r["n"] for r in interleave([[{"n": 1}, {"n": 3}], [{"n": 2}]])] == [1, 2, 3]
+
+
+async def test_repeated_searches_are_served_from_the_cache(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import update
+
+    from app.db.session import AsyncSessionLocal
+    from app.models.models import SearchCache
+
+    with respx.mock(assert_all_called=False) as mock:
+        s2 = mock.get(S2).mock(return_value=httpx.Response(200, json=S2_BODY))
+        first = await search_papers(["Graph  Transformers"], limit=5, sources=["semantic_scholar"])
+        # Same request (case and spacing don't matter): no second call.
+        second = await search_papers(["graph transformers"], limit=5, sources=["semantic_scholar"])
+        assert s2.call_count == 1
+        assert [p["title"] for p in first] == [p["title"] for p in second]
+
+        # Different filters are a different request.
+        await search_papers(
+            ["graph transformers"], limit=5, year_from=2020, sources=["semantic_scholar"]
+        )
+        assert s2.call_count == 2
+
+        # Expired entries are fetched again.
+        async with AsyncSessionLocal() as db:
+            old = datetime.now(timezone.utc) - timedelta(days=30)
+            await db.execute(update(SearchCache).values(created_at=old))
+            await db.commit()
+        await search_papers(["graph transformers"], limit=5, sources=["semantic_scholar"])
+        assert s2.call_count == 3
+
+
+async def test_cache_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "SEARCH_CACHE_DAYS", 0)
+    with respx.mock(assert_all_called=False) as mock:
+        s2 = mock.get(S2).mock(return_value=httpx.Response(200, json=S2_BODY))
+        await search_papers(["x"], limit=5, sources=["semantic_scholar"])
+        await search_papers(["x"], limit=5, sources=["semantic_scholar"])
+    assert s2.call_count == 2

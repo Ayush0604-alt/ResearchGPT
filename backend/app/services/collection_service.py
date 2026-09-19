@@ -15,7 +15,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 from loguru import logger
-from sqlalchemy import delete, or_, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -127,6 +127,22 @@ async def default_fetch_text(client: httpx.AsyncClient, url: str) -> Optional[st
     return await extract_pdf_text(data)
 
 
+async def reuse_text(doi: Optional[str], pdf_url: Optional[str]) -> Optional[str]:
+    """Text already extracted for the same paper (in any project), if any.
+    Saves downloading and parsing a PDF that was read before."""
+    conditions = []
+    if doi:
+        conditions.append(Paper.doi == doi)
+    if pdf_url:
+        conditions.append(Paper.pdf_url == pdf_url[:1999])
+    if not conditions:
+        return None
+    async with AsyncSessionLocal() as db:
+        return await db.scalar(
+            select(Paper.full_text).where(or_(*conditions), Paper.full_text.is_not(None)).limit(1)
+        )
+
+
 async def replace_papers(db: AsyncSession, project_id: int, papers: List[Dict[str, Any]]) -> None:
     """Swap in freshly collected papers. The old review no longer matches them."""
     await db.execute(delete(Paper).where(Paper.project_id == project_id))
@@ -194,7 +210,8 @@ async def _run(
 
         async def read(paper: Dict[str, Any], client: httpx.AsyncClient) -> None:
             nonlocal done
-            if paper.get("pdf_url"):
+            paper["full_text"] = await reuse_text(paper.get("doi"), paper.get("pdf_url"))
+            if not paper["full_text"] and paper.get("pdf_url"):
                 async with semaphore:
                     paper["full_text"] = await fetch_text(client, paper["pdf_url"])
             done += 1
