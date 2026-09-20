@@ -4,15 +4,66 @@ Environment variables take precedence over .env.
 """
 
 import json
-from typing import List
+from typing import Any, List, Tuple, Type
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic.fields import FieldInfo
+from pydantic_settings import (
+    BaseSettings,
+    DotEnvSettingsSource,
+    EnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 _DEV_SECRET_KEY = "dev_secret_key_change_in_production_min_32_chars"
 # The server must never hold an LLM key: users bring their own, and it stays in
 # their browser. These are refused outside development (see _no_server_llm_keys).
 LLM_KEY_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+
+
+def parse_origins(raw: str) -> List[str]:
+    """Read CORS_ORIGINS from a string, however it was written.
+
+    Accepts a JSON array, a comma-separated list, or a single origin. An
+    unparseable value yields origins that simply match nothing, which fails
+    closed: the API allows no cross-origin request rather than refusing to boot.
+    """
+    text = raw.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    else:
+        values = parsed if isinstance(parsed, list) else [parsed]
+        return [str(v).strip() for v in values if str(v).strip()]
+    return [part.strip().strip("\"'") for part in text.strip("[]").split(",") if part.strip(" \"'")]
+
+
+# pydantic-settings JSON-decodes a complex field (List[str]) inside the source,
+# before any validator on the model runs, and raises SettingsError when that
+# fails. So a bare "https://example.com" in the environment aborts start-up, and
+# a `mode="before"` validator never sees it. These two sources parse that one
+# field themselves instead. pydantic-settings 2.3 added `NoDecode` for exactly
+# this; requirements pin 2.2.1, which has no such annotation.
+class _LenientOriginsMixin:
+    def prepare_field_value(
+        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
+    ) -> Any:
+        if field_name == "CORS_ORIGINS" and isinstance(value, str):
+            return parse_origins(value)
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
+
+
+class _LenientEnvSource(_LenientOriginsMixin, EnvSettingsSource):
+    pass
+
+
+class _LenientDotEnvSource(_LenientOriginsMixin, DotEnvSettingsSource):
+    pass
+
 
 _PLACEHOLDER_SECRETS = {
     _DEV_SECRET_KEY,
@@ -87,16 +138,41 @@ class Settings(BaseSettings):
     # ── CORS ───────────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
-    @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
-    def parse_cors(cls, v):
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                # Handle comma-separated string fallback
-                return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        """Same order as the default, with the two string sources made lenient
+        about CORS_ORIGINS (see _LenientOriginsMixin).
+
+        The replacements copy their configuration from the sources handed in,
+        rather than being built fresh: those carry per-call overrides such as
+        `Settings(_env_file=None)`, and rebuilding from the model config alone
+        would silently start reading .env again.
+        """
+        common = dict(
+            case_sensitive=env_settings.case_sensitive,
+            env_prefix=env_settings.env_prefix,
+            env_nested_delimiter=env_settings.env_nested_delimiter,
+            env_ignore_empty=env_settings.env_ignore_empty,
+            env_parse_none_str=env_settings.env_parse_none_str,
+        )
+        return (
+            init_settings,
+            _LenientEnvSource(settings_cls, **common),
+            _LenientDotEnvSource(
+                settings_cls,
+                env_file=dotenv_settings.env_file,
+                env_file_encoding=dotenv_settings.env_file_encoding,
+                **common,
+            ),
+            file_secret_settings,
+        )
 
     @field_validator("SYNC_DATABASE_URL", mode="before")
     @classmethod
