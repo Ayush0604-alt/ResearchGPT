@@ -169,11 +169,17 @@ export function sanitizeCitations(
   validIds: Set<number>,
 ): { text: string; unknown: number[] } {
   const unknown: number[] = []
-  const cleaned = text.replace(CITATION, (match, id: string) => {
+  let cleaned = text.replace(CITATION, (match, id: string) => {
     if (validIds.has(Number(id))) return match
     unknown.push(Number(id))
     return ''
   })
+  if (unknown.length) {
+    // Removing a citation leaves a gap: close it up rather than ship "shown  in"
+    // or a space before a full stop. Both patterns need a non-space to their
+    // left, so list indentation, table padding and hard line breaks survive.
+    cleaned = cleaned.replace(/(\S)[ \t]{2,}/g, '$1 ').replace(/(\S)[ \t]+([,.;:!?])/g, '$1$2')
+  }
   return { text: cleaned, unknown }
 }
 

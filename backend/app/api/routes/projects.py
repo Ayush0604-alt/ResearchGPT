@@ -314,11 +314,16 @@ async def snowball_candidates(
     next_id = max((c["id"] for c in existing), default=-1) + 1
     added = []
     for record in records:
-        if (
-            record.get("doi") in known_dois
-            or normalize_title(record.get("title") or "") in known_titles
-        ):
+        doi = record.get("doi")
+        title = normalize_title(record.get("title") or "")
+        if doi in known_dois or title in known_titles:
             continue
+        # Remember each one as it is taken: the neighbours of two seeds overlap,
+        # so the same paper can appear twice within one batch of results.
+        if doi:
+            known_dois.add(doi)
+        if title:
+            known_titles.add(title)
         added.append({"id": next_id, **record})
         next_id += 1
     project.candidates = [*existing, *added]

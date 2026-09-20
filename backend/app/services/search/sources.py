@@ -266,6 +266,20 @@ async def openalex(
 
 # ── Europe PMC (covers PubMed, adds open-access full-text links) ────────────
 
+# Characters Europe PMC reads as query syntax. Queries are planned by a model,
+# so an unbalanced bracket or a stray colon would make the whole search 400 and
+# silently drop this source. The API offers no escape, so drop them and keep the
+# words — which is what the query meant anyway.
+_EPMC_SYNTAX = re.compile(r'[()\[\]{}":*?^~\\/]+')
+# Bare booleans left in the text would combine with the filter below.
+_EPMC_BOOLEANS = {"and", "or", "not"}
+
+
+def _epmc_terms(query: str) -> str:
+    cleaned = _EPMC_SYNTAX.sub(" ", query)
+    words = [w for w in cleaned.split() if w.lower() not in _EPMC_BOOLEANS]
+    return " ".join(words) or "research"
+
 
 async def europepmc(
     client: httpx.AsyncClient,
@@ -274,7 +288,7 @@ async def europepmc(
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
 ) -> List[PaperRecord]:
-    q = f"({query}) AND HAS_ABSTRACT:y"
+    q = f"({_epmc_terms(query)}) AND HAS_ABSTRACT:y"
     if year_from or year_to:
         q += f" AND PUB_YEAR:[{year_from or 1800} TO {year_to or 2100}]"
     params = {"query": q, "format": "json", "resultType": "core", "pageSize": min(limit, 100)}
