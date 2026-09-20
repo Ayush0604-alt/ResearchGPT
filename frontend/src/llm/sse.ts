@@ -8,7 +8,8 @@ export function takeSSEEvents(buffer: string): { events: string[]; rest: string 
         .split(/\r?\n/)
         .filter((line) => line.startsWith('data:'))
         .map((line) => line.slice(5).trim())
-        .join(''),
+        // Several data: lines in one event are one payload, joined by newlines.
+        .join('\n'),
     )
     .filter(Boolean)
   return { events, rest }

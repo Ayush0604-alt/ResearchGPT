@@ -41,7 +41,10 @@ export async function toAnthropicError(err: unknown): Promise<unknown> {
     return new InvalidKeyError()
   }
   if (err instanceof SDK.RateLimitError) {
-    const seconds = Number(err.headers?.get('retry-after'))
+    // Headers.get() returns null when absent, and Number(null) is 0 — which is
+    // finite, and would tell withRetry to retry with no backoff at all.
+    const header = err.headers?.get('retry-after')
+    const seconds = header ? Number(header) : NaN
     return new RateLimitError(undefined, Number.isFinite(seconds) ? seconds * 1000 : undefined)
   }
   if (err instanceof SDK.APIConnectionError) {
@@ -115,6 +118,7 @@ export const anthropic: LLMProvider = {
   keyUrl: 'https://console.anthropic.com/settings/keys',
   apiHost: ANTHROPIC_HOST,
   acceptsPdf: true,
+  minOutputTokens: MIN_MAX_TOKENS,
   defaultModels: { fast: 'claude-haiku-4-5', strong: 'claude-opus-5' },
 
   listModels: (apiKey, signal) =>

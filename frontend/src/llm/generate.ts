@@ -38,7 +38,10 @@ export async function generateJSON<T extends z.ZodType>(
 ): Promise<JSONResult<z.infer<T>>> {
   const { schema, retry, ...base } = req
   let usage: Usage = { inputTokens: 0, outputTokens: 0 }
-  let maxOutputTokens = base.maxOutputTokens ?? 8192
+  // Start at the provider's own floor, if it has one: doubling a budget the
+  // provider would raise anyway sends the same number twice, so the retry below
+  // would ask again with no more room than the attempt that ran out.
+  let maxOutputTokens = Math.max(base.maxOutputTokens ?? 8192, provider.minOutputTokens ?? 0)
   let messages = base.messages
   let grewBudget = false
   let repaired = false

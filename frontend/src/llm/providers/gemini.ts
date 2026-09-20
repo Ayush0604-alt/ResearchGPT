@@ -185,7 +185,12 @@ export const gemini: LLMProvider = {
     )
     if (!resp.body) throw new LLMError('Streaming is not supported in this browser.')
     for await (const event of sseEvents(resp.body)) {
-      const chunk: GeminiResponse = JSON.parse(event)
+      let chunk: GeminiResponse
+      try {
+        chunk = JSON.parse(event)
+      } catch {
+        continue // keepalives and other non-JSON frames aren't content
+      }
       if (finishReasonOf(chunk) === 'blocked') {
         throw new LLMError('The model declined to answer (safety filter).')
       }

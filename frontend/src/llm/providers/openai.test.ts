@@ -91,6 +91,21 @@ describe('openai.complete', () => {
     mockFetch(json({ error: { message: 'boom' } }, 503))
     expect((await openai.complete(req).catch((e) => e)).retryable).toBe(true)
   })
+
+  it('leaves retryAfterMs unset when a 429 carries no retry-after header', async () => {
+    mockFetch(json({ error: { message: 'slow down' } }, 429))
+    const limited = await openai.complete(req).catch((e) => e)
+    expect(limited).toBeInstanceOf(RateLimitError)
+    // Headers.get() returns null and Number(null) is 0, which is finite: left
+    // as 0 it would tell withRetry to retry immediately, with no backoff.
+    expect(limited.retryAfterMs).toBeUndefined()
+  })
+
+  it('ignores a retry-after that is not a number', async () => {
+    mockFetch(json({ error: { message: 'slow down' } }, 429, { 'retry-after': 'later' }))
+    const limited = await openai.complete(req).catch((e) => e)
+    expect(limited.retryAfterMs).toBeUndefined()
+  })
 })
 
 describe('openai.stream', () => {

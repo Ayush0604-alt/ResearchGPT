@@ -106,6 +106,19 @@ describe('generateJSON', () => {
     expect(calls.map((c) => c.maxOutputTokens)).toEqual([1000, 2000])
   })
 
+  it("starts at the provider's minimum, so the truncation retry really asks for more", async () => {
+    const { provider, calls } = fakeProvider(
+      reply('{"title":"A","ta', 'length'),
+      reply('{"title":"A","tags":[],"score":null}'),
+    )
+    // Anthropic raises anything below its floor. Doubling a budget it would have
+    // raised anyway sends the same number twice, so the retry gets no more room
+    // than the attempt that just ran out of it.
+    const floored = { ...provider, minOutputTokens: 16_000 }
+    await generateJSON(floored, { ...req, schema: Schema, maxOutputTokens: 4096 })
+    expect(calls.map((c) => c.maxOutputTokens)).toEqual([16_000, 32_000])
+  })
+
   it('reports safety blocks without retrying', async () => {
     const { provider, calls } = fakeProvider(reply('', 'blocked'))
     await expect(generateJSON(provider, { ...req, schema: Schema })).rejects.toThrow(/declined/)

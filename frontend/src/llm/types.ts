@@ -87,6 +87,12 @@ export interface LLMProvider {
   /** Can read PDF attachments directly (tables, figures, equations survive). */
   acceptsPdf: boolean
   /**
+   * Smallest output budget this provider will accept, when it has one. Callers
+   * must raise `maxOutputTokens` to it before asking, so that growing the budget
+   * after a truncated answer (see generate.ts) actually sends a larger number.
+   */
+  minOutputTokens?: number
+  /**
    * Default model tiers: `fast` reads each paper, `strong` writes the review and
    * answers chat. Used when the key offers them; the user can pick others.
    */

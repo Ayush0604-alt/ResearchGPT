@@ -42,7 +42,10 @@ export async function toOpenAIError(resp: Response): Promise<Error> {
       // Retrying won't help: the account is out of credit.
       return new LLMError('Your OpenAI account has no credit left. Check your billing.', 429)
     }
-    const seconds = Number(resp.headers.get('retry-after'))
+    // Headers.get() returns null when absent, and Number(null) is 0 — which is
+    // finite, and would tell withRetry to retry with no backoff at all.
+    const header = resp.headers.get('retry-after')
+    const seconds = header ? Number(header) : NaN
     return new RateLimitError(undefined, Number.isFinite(seconds) ? seconds * 1000 : undefined)
   }
   return new LLMError(
@@ -170,7 +173,12 @@ export const openai: LLMProvider = {
     if (!resp.body) throw new LLMError('Streaming is not supported in this browser.')
     for await (const event of sseEvents(resp.body)) {
       if (event === '[DONE]') return
-      const chunk: { choices?: ChatChoice[] } = JSON.parse(event)
+      let chunk: { choices?: ChatChoice[] }
+      try {
+        chunk = JSON.parse(event)
+      } catch {
+        continue // keepalives and other non-JSON frames aren't content
+      }
       const choice = chunk.choices?.[0]
       if (finishReasonOf(choice) === 'blocked') {
         throw new LLMError('The model declined to answer (safety filter).')
