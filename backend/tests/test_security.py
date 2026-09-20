@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import jwt
 
+from app.api.routes import auth as auth_routes
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
 
@@ -68,3 +69,34 @@ async def test_rejects_expired_forged_and_malformed_tokens(client, make_user):
 def test_tokens_use_configured_algorithm():
     token = create_access_token({"sub": "1"})
     assert jwt.get_unverified_header(token)["alg"] == settings.ALGORITHM
+
+
+async def test_login_hashes_even_when_the_email_is_unknown(client, monkeypatch):
+    """Skipping bcrypt for an unknown address makes it answer measurably faster,
+    which tells an attacker whether an account exists."""
+    calls = []
+    real = auth_routes.verify_password_dummy
+    monkeypatch.setattr(
+        auth_routes,
+        "verify_password_dummy",
+        lambda password: calls.append(password) or real(password),
+    )
+    resp = await client.post(
+        "/auth/login", json={"email": "nobody@example.com", "password": "whatever123"}
+    )
+    assert resp.status_code == 401
+    assert calls == ["whatever123"]
+
+
+async def test_csrf_rejection_still_carries_cors_headers(client):
+    """CORS must wrap the CSRF check, or a browser sees an opaque cross-origin
+    failure instead of the 403 and its message."""
+    origin = settings.CORS_ORIGINS[0]
+    resp = await client.post(
+        "/auth/login",
+        json={"email": "a@b.com", "password": "x"},
+        headers={"X-Requested-With": "", "Origin": origin},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Missing X-Requested-With header"
+    assert resp.headers["access-control-allow-origin"] == origin

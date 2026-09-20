@@ -58,31 +58,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded)
 
-# CORS must come before GZip
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-
-
-@app.middleware("http")
-async def request_id(request: Request, call_next):
-    """Tag every log line of a request, and the response, with a request id.
-    A well-formed incoming X-Request-ID (e.g. from the proxy) is reused."""
-    incoming = request.headers.get("x-request-id", "")
-    rid = incoming if REQUEST_ID.match(incoming) else uuid.uuid4().hex[:16]
-    with logger.contextualize(request_id=rid):
-        response = await call_next(request)
-    response.headers["X-Request-ID"] = rid
-    return response
-
 
 API_SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -93,14 +70,15 @@ API_SECURITY_HEADERS = {
     "Cache-Control": "no-store",
 }
 
-
-@app.middleware("http")
-async def api_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith(settings.API_V1_PREFIX):
-        for name, value in API_SECURITY_HEADERS.items():
-            response.headers.setdefault(name, value)
-    return response
+# Middleware order matters and reads backwards: add_middleware inserts at the
+# front of the stack, so whatever is registered LAST ends up outermost. The
+# registrations below therefore run bottom-up, wrapping the app as:
+#
+#     CORS -> GZip -> request_id -> api_security_headers -> require_csrf_header
+#
+# CORS has to be outermost so that responses the inner layers return on their
+# own — a CSRF 403, above all — still carry the CORS headers a browser needs to
+# read them, instead of surfacing as an opaque cross-origin failure.
 
 
 @app.middleware("http")
@@ -115,6 +93,37 @@ async def require_csrf_header(request: Request, call_next):
     ):
         return JSONResponse({"detail": "Missing X-Requested-With header"}, status_code=403)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def api_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(settings.API_V1_PREFIX):
+        for name, value in API_SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+    return response
+
+
+@app.middleware("http")
+async def request_id(request: Request, call_next):
+    """Tag every log line of a request, and the response, with a request id.
+    A well-formed incoming X-Request-ID (e.g. from the proxy) is reused."""
+    incoming = request.headers.get("x-request-id", "")
+    rid = incoming if REQUEST_ID.match(incoming) else uuid.uuid4().hex[:16]
+    with logger.contextualize(request_id=rid):
+        response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
+
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(  # registered last, so it wraps everything above
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 PREFIX = settings.API_V1_PREFIX

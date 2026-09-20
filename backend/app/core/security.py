@@ -39,6 +39,17 @@ def verify_password(plain: str, hashed: str) -> bool:
     return password_hash.verify(plain, hashed)
 
 
+# A real hash to verify against when no user matched, so that logging in with an
+# unknown address costs the same as logging in with a known one. Without it the
+# bcrypt call is skipped and the ~200ms difference says whether an account exists.
+_DUMMY_HASH = password_hash.hash("password-that-is-never-a-real-one")
+
+
+def verify_password_dummy(plain: str) -> None:
+    """Spend the same time as a real check, and always fail."""
+    verify_password(plain, _DUMMY_HASH)
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (

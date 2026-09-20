@@ -9,10 +9,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rate_limit import limiter
-from app.core.security import get_current_user_id, hash_password, verify_password
+from app.core.security import (
+    get_current_user_id,
+    hash_password,
+    verify_password,
+    verify_password_dummy,
+)
 from app.db.session import get_db
 from app.models.models import User
 from app.schemas.schemas import AccountDeletion, UserLogin, UserOut, UserRegister
@@ -39,7 +45,15 @@ async def register(request: Request, body: UserRegister, db: AsyncSession = Depe
         hashed_password=hash_password(body.password),
     )
     db.add(user)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Two sign-ups raced past the checks above; the unique indexes caught it.
+        # Roll back so the session is usable again, then answer as those checks would.
+        await db.rollback()
+        raise HTTPException(
+            status_code=400, detail="Email already registered or username already taken"
+        ) from None
     await db.refresh(user)
     return user
 
@@ -53,7 +67,12 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     user = await db.scalar(select(User).where(User.email == body.email))
-    if not user or not verify_password(body.password, user.hashed_password):
+    if not user:
+        # Hash anyway: skipping it would make an unknown address answer faster
+        # than a known one, which enumerates who has an account here.
+        verify_password_dummy(body.password)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive")
