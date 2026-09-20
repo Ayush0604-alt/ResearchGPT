@@ -263,6 +263,12 @@ async def _run(
             logger.exception(f"[Collect] Could not record failure for project {project_id}")
     finally:
         beat.cancel()
+        # Wait for the cancellation to land, so the job doesn't return while its
+        # heartbeat task is still mid-write.
+        try:
+            await beat
+        except asyncio.CancelledError:
+            pass
 
 
 async def _search_or_fail(
@@ -285,14 +291,23 @@ async def _read_and_save(
     done = 0
     semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
+    last_reported = 0
+
     async def read(paper: Dict[str, Any], client: httpx.AsyncClient) -> None:
-        nonlocal done
-        paper["full_text"] = await reuse_text(paper.get("doi"), paper.get("pdf_url"))
-        if not paper["full_text"] and paper.get("pdf_url"):
-            async with semaphore:
+        nonlocal done, last_reported
+        # Inside the semaphore too: reuse_text opens its own session, and one per
+        # paper at once would ask the pool for more connections than it has.
+        async with semaphore:
+            paper["full_text"] = await reuse_text(paper.get("doi"), paper.get("pdf_url"))
+            if not paper["full_text"] and paper.get("pdf_url"):
                 paper["full_text"] = await fetch_text(client, paper["pdf_url"])
         done += 1
-        await _set(project_id, progress=25 + int(65 * done / total))
+        # Progress is a percentage: only write when it actually moves, instead of
+        # opening a session per paper to store the same number again.
+        progress = 25 + int(65 * done / total)
+        if progress > last_reported:
+            last_reported = progress
+            await _set(project_id, progress=progress)
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0), headers={"User-Agent": USER_AGENT}

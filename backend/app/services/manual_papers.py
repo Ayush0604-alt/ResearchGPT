@@ -119,6 +119,12 @@ async def add_by_identifier(db: AsyncSession, project: ResearchProject, identifi
     """Look a paper up by DOI or arXiv id, read its open-access PDF if there is one, and save it."""
     await _guard(db, project)
     kind, value = parse_identifier(identifier)
+    # The lookup and PDF read below can take the better part of a minute. Close
+    # the transaction first so a connection isn't held open — idle in transaction
+    # — for that whole round trip; the session takes a new one when _save needs
+    # it. Commit, not rollback: loading the project may have marked a dead
+    # collection failed, and that must not be thrown away.
+    await db.commit()
     try:
         record = await default_lookup(kind, value)
     except httpx.HTTPError as exc:

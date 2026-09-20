@@ -1,11 +1,13 @@
 """
 Async SQLAlchemy session factory.
 
-Fixes:
-- Removed pool_size/max_overflow — these conflict when connect_args includes ssl,
-  and are not needed for typical single-worker dev setups.
-- Added proper SSL detection for Neon/Supabase hosted Postgres.
-- get_db generator correctly commits on success and rolls back on error.
+- SSL detection for hosted Postgres (Neon, Supabase), which asyncpg needs as
+  connect_args={"ssl": ...} rather than an ?sslmode= query parameter.
+- An explicit connection pool. These were once removed as conflicting with the
+  ssl connect_args, which they don't — they are pool arguments, not connection
+  ones — and the defaults (5 + 10) left a ceiling the app's own fan-out could
+  exhaust on a single request. See D-36 in claudeMD/decisions.md.
+- get_db owns the transaction: it commits on success and rolls back on error.
 """
 
 from typing import AsyncGenerator
@@ -26,6 +28,14 @@ engine = create_async_engine(
     db_url,
     echo=settings.SQL_ECHO,
     pool_pre_ping=True,
+    # Set explicitly rather than left at SQLAlchemy's 5 + 10. Request handlers
+    # hold a connection while background work (search cache reads, collection
+    # progress writes) opens its own, so the ceiling has to cover both at once;
+    # see DB_FANOUT in app/services/search and collection_service.
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_recycle=1800,  # hosted Postgres (Neon) drops idle connections
     connect_args=connect_args,
 )
 

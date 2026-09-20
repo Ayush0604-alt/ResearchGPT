@@ -27,6 +27,11 @@ from app.utils.safe_http import USER_AGENT
 
 PER_QUERY_LIMIT = 15
 UNPAYWALL_LOOKUPS = 20
+# Every (source, query) pair wants a session for its cache read, and the request
+# that started the search is already holding one. Four sources times six queries
+# would ask for 24 at once, so cap how many touch the pool together.
+DB_FANOUT = 6
+_cache_slots = asyncio.Semaphore(DB_FANOUT)
 
 
 class SearchUnavailable(Exception):
@@ -51,18 +56,19 @@ async def _cached_search(
     key = _cache_key(name, query, limit, year_from, year_to)
     ttl = timedelta(days=settings.SEARCH_CACHE_DAYS)
     try:
-        async with AsyncSessionLocal() as db:
+        async with _cache_slots, AsyncSessionLocal() as db:
             row = await db.get(SearchCache, key)
             if row and datetime.now(timezone.utc) - row.created_at < ttl:
                 return row.results
     except Exception:
         logger.exception("[Search] cache read failed")
 
+    # Outside the semaphore: this is the slow part and holds no connection.
     results = await SOURCES[name](client, query, limit, year_from, year_to)
 
     if settings.SEARCH_CACHE_DAYS > 0:
         try:
-            async with AsyncSessionLocal() as db:
+            async with _cache_slots, AsyncSessionLocal() as db:
                 await db.merge(
                     SearchCache(key=key, results=results, created_at=datetime.now(timezone.utc))
                 )

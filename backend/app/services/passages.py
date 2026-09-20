@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import TSQUERY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
 
+from app.db.session import AsyncSessionLocal
 from app.models.models import Paper, PaperChunk
 
 CHUNK_CHARS = 1_500
@@ -64,12 +65,18 @@ async def ensure_chunks(db: AsyncSession, project_id: int) -> None:
     rows = [
         {"paper_id": p.id, "project_id": project_id, "ord": i, "text": chunk}
         for p in papers
-        for i, chunk in enumerate(chunk_text(p.full_text or p.abstract or ""))
+        # A paper with neither text nor abstract yields nothing to chunk. Store a
+        # single empty row for it anyway, so it stops looking unchunked and being
+        # re-read on every later search; it simply never matches a query.
+        for i, chunk in enumerate(chunk_text(p.full_text or p.abstract or "") or [""])
     ]
     if rows:
+        # Its own session: this is a write on behalf of a GET, and committing the
+        # caller's would publish whatever else that request has pending.
         # Two concurrent first searches may both chunk; the unique (paper, ord) keeps one copy.
-        await db.execute(insert(PaperChunk).values(rows).on_conflict_do_nothing())
-        await db.commit()
+        async with AsyncSessionLocal() as writer:
+            await writer.execute(insert(PaperChunk).values(rows).on_conflict_do_nothing())
+            await writer.commit()
 
 
 async def search_passages(

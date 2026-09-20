@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # ── Database ───────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/researchgpt"
     SYNC_DATABASE_URL: str = "postgresql+psycopg://postgres:password@localhost:5432/researchgpt"
+    # Connection pool. Keep the ceiling (pool + overflow) under whatever the
+    # database allows per instance; hosted Postgres plans cap this low.
+    DB_POOL_SIZE: int = Field(default=10, ge=1, le=100)
+    DB_MAX_OVERFLOW: int = Field(default=20, ge=0, le=100)
+    DB_POOL_TIMEOUT: int = Field(default=30, ge=1, le=120)
 
     # ── Paper search (server-owned keys for free data APIs; not LLM keys) ──────
     CONTACT_EMAIL: str = ""  # sent to OpenAlex (polite pool) and required by Unpaywall
