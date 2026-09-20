@@ -1,8 +1,9 @@
 # ResearchGPT — Architecture
 
-> Describes the code **as of Phase 4 of [fix-plan.md](fix-plan.md) (2026-09-19)**.
-> The earlier LangGraph and server-side Gemini design is described in
-> [decisions.md](decisions.md), in the entries marked *Superseded*.
+> Describes the code **as of the bug-fix pass of 2026-09-20**, after Phases 0–7
+> of [fix-plan.md](fix-plan.md). The earlier LangGraph and server-side Gemini
+> design is described in [decisions.md](decisions.md), in the entries marked
+> *Superseded*.
 
 ---
 
@@ -11,7 +12,7 @@
 1. A user signs up and saves their **own LLM key** — Google Gemini, Anthropic Claude or OpenAI. It stays in their browser's localStorage and is sent only to that provider.
 2. They create a project with a research topic and click **Run analysis**.
 3. **Browser:** it plans search queries, then screens the candidates the server found for relevance and picks the best ones.
-4. **Server:** a collection job searches five academic APIs, downloads the chosen open-access PDFs through an SSRF guard, extracts their text, and stores it.
+4. **Server:** a collection job searches four academic APIs (Semantic Scholar, OpenAlex, arXiv, Europe PMC), fills in open-access PDF links from Unpaywall, downloads the chosen PDFs through an SSRF guard, extracts their text, and stores it.
 5. **Browser:** the page analyses the papers with the user's key, in a map-reduce:
    - **map:** one structured extraction per paper (the PDF itself where the model reads PDFs)
    - **reduce:** one cited literature review
@@ -50,6 +51,8 @@ is configured.
 ```
 ResearchGPT/
 ├── DEPLOY.md, README.md
+├── start.ps1                 # Windows: checks prerequisites, starts both servers,
+│                             #   waits for /health, streams both logs (see §5)
 ├── eval/                     # fixed topics + how to compare prompt versions
 ├── docker-compose.yml        # db → migrate (alembic) → backend (healthy) → frontend
 ├── docker-compose.test.yml   # throwaway Postgres for tests (127.0.0.1:55432)
@@ -93,9 +96,16 @@ Middleware, from the outside in:
 
 - **CORS:** `CORS_ORIGINS`.
 - **GZip.**
+- **Request ID:** every log line of a request and its response carry an `X-Request-ID`. A well-formed incoming ID is reused.
 - **Security headers:** `nosniff`, `no-referrer`, a `default-src 'none'` CSP and `Cache-Control: no-store` on every `/api` response.
 - **CSRF:** `POST`, `PUT`, `PATCH` and `DELETE` under `/api` need an `X-Requested-With` header, or get a 403.
-- **Request ID:** every log line of a request and its response carry an `X-Request-ID`. A well-formed incoming ID is reused.
+
+The order is deliberate and the registration reads backwards: Starlette's
+`add_middleware` inserts at the front of the stack, so the **last** one
+registered ends up outermost. CORS is registered last so that it wraps
+everything, and a response an inner layer returns by itself — the CSRF 403 above
+all — still carries the CORS headers a browser needs in order to read it, rather
+than surfacing as an opaque cross-origin failure.
 
 **Startup:**
 - Fails collection jobs whose heartbeat went stale.
@@ -117,6 +127,7 @@ Other settings:
 | Group | Settings |
 |---|---|
 | Sessions | `ACCESS_TOKEN_EXPIRE_MINUTES` (15), `REFRESH_TOKEN_EXPIRE_DAYS` (7), `COOKIE_SECURE`, `BCRYPT_ROUNDS` (12) |
+| Database pool | `DB_POOL_SIZE` (10), `DB_MAX_OVERFLOW` (20), `DB_POOL_TIMEOUT` (30s). The ceiling is pool + overflow, per instance; keep it under what the database allows (see §3.7) |
 | Abuse limits | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_STORAGE_URI`, `MAX_PROJECTS_PER_DAY` (20) |
 | Collection | `MAX_PDF_SIZE_MB` (25) |
 | Logging | `LOG_FORMAT` (`text`/`json`), `LOG_TO_FILE`, `SQL_ECHO`, `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE` |
@@ -175,13 +186,20 @@ Every project-scoped route goes through `get_owned_project`, which returns 404 b
 ### 3.5 Collection job — [services/collection_service.py](../backend/app/services/collection_service.py)
 
 ```
-search (PaperSearchAgent, 3 sources concurrently, dedup by title)
-  → for each paper with a pdf_url (4 at a time):
-       fetch_public (utils/safe_http): http(s) only, every resolved address and
-         every redirect hop must be public, ≤3 redirects, size cap while streaming
+search (services/search: 4 sources × each query concurrently, interleaved,
+        deduplicated by DOI, arXiv id or near-identical title)
+  → for each paper (4 at a time):
+       reuse_text: text already extracted for the same DOI or pdf_url, anywhere
+       else fetch_public (utils/safe_http): http(s) only, every resolved address
+         and every redirect hop must be public, ≤3 redirects, size cap streaming
        extract_pdf_text (utils/pdf_text): pypdf in a thread, ≤60 pages, ≤150k chars
   → replace_papers (also deletes the now-stale review) → status 'collected'
 ```
+
+The 4-at-a-time semaphore covers the reuse lookup as well as the download,
+because the lookup opens its own session: letting every paper do that at once
+would ask the pool for more connections than it has (§3.7). Progress is written
+only when the percentage actually changes, rather than once per paper.
 
 **Running and monitoring:**
 - The job runs as a FastAPI `BackgroundTask` and writes a **heartbeat** every 15 seconds.
@@ -205,11 +223,25 @@ search (PaperSearchAgent, 3 sources concurrently, dedup by title)
 - **Rotation:** refreshing revokes the old token and issues a new one.
 - **Reuse detection:** presenting an already-revoked token revokes every session of that user. That revocation is committed before the 401 is raised, because `get_db` would otherwise roll it back.
 - **API clients:** a `Bearer` token in the `Authorization` header is still accepted, and it takes precedence over the cookie.
-- **Passwords:** bcrypt through pwdlib. Existing passlib hashes still verify.
+- **Passwords:** bcrypt through pwdlib. Existing passlib hashes still verify. A login for an address with no account still verifies against a dummy hash, so that signing in with an unknown address costs the same as with a known one — skipping the hash would leave a ~200 ms gap that says whether an account exists.
 
 ### 3.7 Transactions — [db/session.py](../backend/app/db/session.py)
 
 `get_db` owns the commit. Routes and services only add and flush. Background code opens its own `AsyncSessionLocal()` and commits itself.
+
+Three deliberate exceptions, each about **not holding a connection while waiting
+on something slow**:
+
+- `session_service.rotate` commits the mass revocation before raising its 401, which `get_db` would otherwise roll back.
+- `manual_papers.add_by_identifier` commits after its guard and before the metadata lookup and PDF read, which together can take the better part of a minute. It commits rather than rolls back because loading the project may have just marked a dead collection failed, and that must not be discarded.
+- `passages.ensure_chunks` writes the chunks it builds through its own session, because it runs on behalf of a `GET` and committing the caller's session would publish whatever else that request has pending.
+
+**Pool sizing.** The pool is set explicitly (§3.2) rather than left at
+SQLAlchemy's 5 + 10, because a request handler holds a connection while work it
+starts opens more: a search fans out over every (source, query) pair, each
+wanting a session for its cache lookup. That fan-out is capped by a semaphore in
+`services/search` so a single search can't exhaust the pool on its own, and the
+slow part — the source's HTTP call — happens outside it, holding nothing.
 
 ---
 
@@ -217,7 +249,12 @@ search (PaperSearchAgent, 3 sources concurrently, dedup by title)
 
 ### 4.1 LLM layer — [src/llm/](../frontend/src/llm/)
 
-**Provider interface** (`types.ts`): `LLMProvider` with `listModels`, `complete` and `stream`, plus the host the key goes to, whether the provider reads PDFs, and its default fast and strong models. Errors are typed: `InvalidKeyError`, `RateLimitError` (which may carry a retry delay), and `LLMError` (which can be marked retryable).
+**Provider interface** (`types.ts`): `LLMProvider` with `listModels`, `complete` and `stream`, plus the host the key goes to, whether the provider reads PDFs, its default fast and strong models, and an optional `minOutputTokens` — the smallest output budget the provider accepts. Errors are typed: `InvalidKeyError`, `RateLimitError` (which may carry a retry delay), and `LLMError` (which can be marked retryable).
+
+A `RateLimitError` carries a retry delay **only when the provider actually sent
+one**. A missing `retry-after` header must stay `undefined` rather than become
+`0`: `withRetry` treats a `0` as "retry now", which spends every attempt in a
+few milliseconds against an API that just asked for a pause.
 
 | Adapter | How it calls the provider |
 |---|---|
@@ -234,7 +271,7 @@ All three map finish reasons to `stop`, `length` or `blocked`, and errors to the
 | Problem | Response |
 |---|---|
 | Reply doesn't match the schema | one repair round, showing the model the validation error |
-| Reply cut off by the token limit | one retry with twice the budget |
+| Reply cut off by the token limit | one retry with twice the budget, counted from the provider's `minOutputTokens` floor so the retry really does ask for more |
 | Safety block | fail immediately |
 | Rate limit or transient error | backoff with jitter (`retry.ts`) |
 
@@ -291,6 +328,16 @@ See [DEPLOY.md](../DEPLOY.md).
 
 **Compose:** `db` → `migrate` → `backend` (health-checked) → `frontend`.
 
+**Local development on Windows:** `start.ps1` checks the prerequisites, installs
+anything missing, warns when migrations are pending (they are opt-in, because
+`backend/.env` may point at a shared database), starts both servers, waits for
+`/health`, and streams both logs into one window. It supervises the backend with
+`watchfiles` rather than `uvicorn --reload`: on Windows uvicorn restarts its
+worker with `os.kill(pid, CTRL_C_EVENT)`, which needs a console, so with the
+output streams redirected the signal is accepted but never delivered, the old
+worker never exits, and the server goes on serving the code you just edited
+while the log says it reloaded. See D-35 in [decisions.md](decisions.md).
+
 ---
 
 ## 6. External services
@@ -307,8 +354,8 @@ See [DEPLOY.md](../DEPLOY.md).
 
 | Suite | Count | What it covers |
 |---|---|---|
-| **pytest** (`backend/tests`) | 186 | auth and sessions, ownership (IDOR) on every route, validation, search and deduplication, collection job, SSRF guard, PDF extraction, analysis storage, citation checks and run metadata, passage retrieval, manual papers, review versions, chat, rate limits and quotas, config guards, migrations, observability |
-| **Vitest** (`frontend/src/**/*.test.*`) | 90 | all three provider adapters (request shape, streaming, error mapping), generateJSON repair and truncation, retry, token metering, pricing, runAnalysis (resume, skip, fatal errors, concurrency, cancel), screening, citation checks, exports, prompts and citations, chat context, settings store, Markdown sanitisation, polling rules, header parity |
+| **pytest** (`backend/tests`) | 190 | auth and sessions, login timing, CSRF-with-CORS, ownership (IDOR) on every route, validation, search and deduplication, collection job, SSRF guard, PDF extraction, analysis storage, citation checks and run metadata, passage retrieval, manual papers, review versions, chat, rate limits and quotas, config guards, migrations, observability |
+| **Vitest** (`frontend/src/**/*.test.*`) | 93 | all three provider adapters (request shape, streaming, error mapping, rate-limit hints with and without a `retry-after`), generateJSON repair and truncation (including growth from a provider's token floor), retry, token metering, pricing, runAnalysis (resume, skip, fatal errors, concurrency, cancel), screening, citation checks, exports, prompts and citations, chat context, settings store, Markdown sanitisation, polling rules, header parity |
 | **Playwright** (`frontend/e2e`) | 28 | real Chrome, real API, throwaway DB, every provider stubbed at the network layer, paper search stubbed on the e2e server: sign-up with a key, a full run with each provider, rate-limit resume, screening, snowballing, PDF input, review tabs and exports, run history, manual papers, chat with retrieval, sessions, deletion, accessibility (axe, WCAG 2.1 A and AA), and **the key never appearing in any `/api` request** |
 
 **Opt-in live check:** `GEMINI_LIVE_KEY=… npx vitest run gemini.live` calls the real Gemini API.

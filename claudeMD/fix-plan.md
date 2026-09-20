@@ -9,6 +9,12 @@ the deployment goal: **a public app where users bring their own LLM key, kept on
 > on purpose (DOCX export, GROBID, pgvector, shadcn/ui). Two items need a human: the baseline
 > pipeline run in Step 1 and a CI run on GitHub (Step 4).
 
+> **Later (2026-09-20):** a bug-fix pass after this plan changed behaviour in a few places that
+> the steps below describe — provider retry and token budgets, the middleware order, the login
+> path, the database pool and its fan-out, and how the dev server reloads. This document is the
+> record of the plan, not of the current code: see [architecture.md](architecture.md) for what
+> the code does now, and D-35 to D-37 in [decisions.md](decisions.md) for why.
+
 **How to use it:**
 - Work top to bottom. Each step lists what it depends on, the actions to take, and a **Done when** check.
 - Make one branch or PR per step and keep `main` deployable.
@@ -103,7 +109,7 @@ Add a GitHub Actions workflow with two jobs:
 ### ☑ Step 8: Fix projects stuck in `running` · I§2 (P0)
 - In `lifespan` startup: `UPDATE research_projects SET status='failed' WHERE status='running'`, and log how many rows it changed.
 - In `run_agents`: if the project is `running` but its `task_id` is not in `_task_store`, treat the run as stale and allow a new one.
-- In [ProjectPage.jsx](../frontend/src/pages/ProjectPage.jsx): when polling gets a 404, stop polling, set the status to `failed`, and show a toast asking the user to run again.
+- In `ProjectPage.jsx`: when polling gets a 404, stop polling, set the status to `failed`, and show a toast asking the user to run again.
 
 **Done when:** you start a run, restart the backend, reload the page, and the project shows **Failed** with a working Run button.
 
@@ -115,7 +121,7 @@ Add a GitHub Actions workflow with two jobs:
 **Done when:** `docker compose build` works and `docker run --rm <backend-image> ls` shows no `venv`, `.env` or `storage`.
 
 ### ☑ Step 10: Remove the XSS risk · I§7, D§1 (R4)
-- Replace `renderMd` and `dangerouslySetInnerHTML` in [ReviewPage.jsx](../frontend/src/pages/ReviewPage.jsx) with `react-markdown` + `remark-gfm` + `rehype-sanitize`.
+- Replace `renderMd` and `dangerouslySetInnerHTML` in `ReviewPage.jsx` with `react-markdown` + `remark-gfm` + `rehype-sanitize`.
 - Render chat answers with the same component.
 - Add a first CSP header in `nginx.conf`: `default-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'`.
   - If `index.html` loads Google Fonts, add those domains to `style-src` and `font-src`, or better, host the font yourself.

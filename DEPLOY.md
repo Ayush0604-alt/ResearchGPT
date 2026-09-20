@@ -29,6 +29,14 @@ Any Postgres 15+ works (Neon, Supabase, RDS, or a managed instance on your platf
 - `DATABASE_URL`: `postgresql+asyncpg://USER:PASS@HOST/DB`. Neon and Supabase hosts, and `?sslmode=require`, get TLS automatically.
 - `SYNC_DATABASE_URL`: the same, as `postgresql://USER:PASS@HOST/DB` (used by migrations).
 
+**Connection budget.** Each instance opens up to `DB_POOL_SIZE + DB_MAX_OVERFLOW`
+connections (default 10 + 20 = 30), so *N* instances can ask for *N* × 30. Managed
+Postgres plans cap connections well below that — Neon's smaller plans and Supabase's
+direct port are common places to hit it. Either size the pool to your plan, or put a
+pooler (PgBouncer, Neon's pooled endpoint, Supabase's transaction pooler) in front and
+point `DATABASE_URL` at it. A pool that is too large fails under load with connection
+timeouts surfacing as 500s, not at startup.
+
 ## 2. Backend container (`backend/Dockerfile`)
 
 **Release step** (run once per deploy, before new instances start):
@@ -47,6 +55,7 @@ Most platforms have a "release" or "pre-deploy" command for this. With Compose, 
 | `SECRET_KEY` | `openssl rand -hex 32`. The API refuses to start if it's weak. |
 | `COOKIE_SECURE` | `true` (required outside development) |
 | `DATABASE_URL`, `SYNC_DATABASE_URL` | see above |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT` | optional (10, 20, 30s). Per instance — see the connection budget above |
 | `CORS_ORIGINS` | `["https://your-domain"]` |
 | `FORWARDED_ALLOW_IPS` | IP or CIDR of your reverse proxy, so rate limits see real client IPs. Never `*` if the API port is reachable from the internet. |
 | `RATE_LIMIT_STORAGE_URI` | `memory://` (per instance) or `redis://…` to share limits across instances |

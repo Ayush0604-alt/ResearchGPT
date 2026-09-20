@@ -16,6 +16,9 @@
 > [architecture.md](architecture.md) (the current state),
 > [decisions.md](decisions.md) (why things are the way they are) and
 > [improvements.md](improvements.md) (fixes to the current code).
+>
+> File paths below describe the code as it was before the redesign; the ones that
+> no longer exist appear as plain `paths` rather than links.
 
 ---
 
@@ -26,7 +29,7 @@
 | # | Requirement | Current code violates it? |
 |---|---|---|
 | R1 | The server must never persist the key (no DB, disk, logs or error trackers) | no, but only because the key is a server env var today |
-| R2 | The server should ideally never **see** the key | ❌ all LLM calls run on the server ([gemini_client.py](../backend/app/utils/gemini_client.py)) |
+| R2 | The server should ideally never **see** the key | ❌ all LLM calls run on the server (`gemini_client.py`) |
 | R3 | A production server must not have its own `GEMINI_API_KEY` as a fallback, or public users will spend your quota | ❌ it is required in `config.py` |
 | R4 | XSS must be treated as critical, because any injected script can read `localStorage` | ⚠️ `dangerouslySetInnerHTML` renderer, no CSP |
 | R5 | The server still pays for search APIs, PDF downloads, CPU and the database, so those need abuse limits | ❌ no rate limiting |
@@ -122,7 +125,7 @@ interface LLMProvider {
 }
 ```
 
-- **Define schemas once with Zod.** Every provider can return structured JSON from a JSON schema: Gemini `responseSchema`, OpenAI `response_format: json_schema`, and Anthropic through tool use or structured outputs. Validate each response with Zod, and retry once if validation fails. This replaces the fragile slicing from `{` to `}` in [comprehensive/agent.py](../backend/app/agents/comprehensive/agent.py).
+- **Define schemas once with Zod.** Every provider can return structured JSON from a JSON schema: Gemini `responseSchema`, OpenAI `response_format: json_schema`, and Anthropic through tool use or structured outputs. Validate each response with Zod, and retry once if validation fails. This replaces the fragile slicing from `{` to `}` in `comprehensive/agent.py`.
 - **Two model tiers per provider.** Use a fast, cheap model for the many per-paper calls and a stronger model for the one synthesis call. Examples:
   - Gemini: Flash for extraction, Pro for synthesis
   - Anthropic: `claude-haiku-4-5` for extraction, `claude-sonnet-5` or `claude-opus-5` for synthesis

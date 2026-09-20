@@ -5,8 +5,12 @@
 > as the record of what was wrong. For where each item was fixed, see the traceability table in
 > [fix-plan.md](fix-plan.md), whose phase notes also list what was skipped on purpose.
 
-These come from a full read of the codebase at `1446fba`. Items are grouped by
-theme and tagged with a priority:
+These come from a full read of the codebase at `1446fba`. File paths below are
+as they were at that commit: several no longer exist, because the server-side
+Gemini and agent code was deleted and the pages were moved to TypeScript. Those
+appear as plain `paths` rather than links.
+
+Items are grouped by theme and tagged with a priority:
 
 - **P0**: a bug or security hole; fix it before anyone else uses the app
 - **P1**: correctness or reliability; users will run into it
@@ -65,7 +69,7 @@ async def get_owned_project(project_id: int, db=Depends(get_db),
 For `/chat/query`, `project_id` is in the request body, so check it inside the handler.
 
 ### P0: `/agents/status/{task_id}` has no authentication
-[agents.py:80](../backend/app/api/routes/agents.py#L80). Task ids can be guessed
+`agents.py:80`. Task ids can be guessed
 (`task_{project}_{user}_{unix_ts}`). **Fix:** Require the JWT, and store `user_id` in
 the task entry so the route can compare them. Or drop task ids and serve status
 from `GET /projects/{id}` (this becomes natural once §2 moves status into the database).
@@ -123,7 +127,7 @@ Tell the model to treat that content as data. Keep the system instructions in `s
 When the process restarts, `_task_store` is emptied but the project row keeps
 `status = running`:
 - `POST /agents/run` answers "Already running".
-- The UI polls a task id that now returns 404. [ProjectPage.jsx:104](../frontend/src/pages/ProjectPage.jsx#L104) ignores polling errors, so the spinner runs forever.
+- The UI polls a task id that now returns 404. `ProjectPage.jsx:104` ignores polling errors, so the spinner runs forever.
 - The Run button is hidden while the status is `running`.
 
 **Fix (minimal):**
@@ -142,7 +146,7 @@ restart. Two options:
 Option A alone fixes most problems.
 
 ### P1: Failures reported as "Completed"
-[comprehensive/agent.py:72-84](../backend/app/agents/comprehensive/agent.py#L72-L84)
+`comprehensive/agent.py:72-84`
 returns an empty result when the JSON cannot be parsed or Gemini fails. The worker
 then marks the project **Completed** with no review, and the review page says "Run
 the pipeline first". The UI hides that button on completed projects, so the user is stuck.
@@ -160,7 +164,7 @@ Check `finish_reason == MAX_TOKENS` so a response cut off by the 8,000-token lim
 is detected and retried, perhaps with fewer papers.
 
 ### P1: Gemini client has no retry and no timeout
-[gemini_client.py](../backend/app/utils/gemini_client.py) has no timeout and no
+`gemini_client.py` has no timeout and no
 retry on 5xx or temporary 429 errors, and it detects 429 by matching the error
 text. **Fix:**
 - Check `google.genai.errors.APIError.code == 429`.
@@ -168,7 +172,7 @@ text. **Fix:**
 - Set an `http_options` timeout.
 
 ### P1: Frontend progress UI does not match the backend
-[ProjectPage.jsx:11-15](../frontend/src/pages/ProjectPage.jsx#L11-L15) lists the 9
+`ProjectPage.jsx:11-15` lists the 9
 steps of the old pipeline. The backend reports `Paper Search`, `Paper Collection`
 and `Comprehensive Analysis`. The last one is not in the list, so `findIndex` returns
 −1 and the step dots stop during the longest step.
@@ -177,7 +181,7 @@ and `Comprehensive Analysis`. The last one is not in the list, so `findIndex` re
 Better still, have the backend return the list of steps.
 
 ### P1: Chat citations never render
-The backend returns `{answer, sources: []}`. [ChatPage.jsx:50](../frontend/src/pages/ChatPage.jsx#L50)
+The backend returns `{answer, sources: []}`. `ChatPage.jsx:50`
 reads `data.citations`. **Fix:** Agree on one name. Return real sources, at least the
 paper numbers `[n]` the model cited, mapped back to paper ids, and save them in `ChatMessage.citations`.
 
@@ -251,7 +255,7 @@ This gives cheaper retries, better grounding, and real progress updates. LangGra
 - Let the user set year ranges and a source filter on NewProjectPage.
 
 ### P2: Download PDFs in parallel
-[workflow.py:72-78](../backend/app/agents/workflow.py#L72-L78) downloads PDFs one
+`workflow.py:72-78` downloads PDFs one
 at a time. Use `asyncio.gather` with `asyncio.Semaphore(4)` and one shared
 `httpx.AsyncClient`. The collection agent also opens a new client for each request.
 Validate the `%PDF` header, not just the content-type.

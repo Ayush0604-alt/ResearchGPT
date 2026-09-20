@@ -10,7 +10,8 @@ Each entry uses this format: **Decision → Why → Trade-offs accepted → Stat
 
 > **Update (2026-09-20):** D-1 to D-19 record the original design. Entries replaced during
 > the fixes are marked *Superseded*. D-20 to D-34 are the decisions made in
-> [fix-plan.md](fix-plan.md), with the reasoning behind each.
+> [fix-plan.md](fix-plan.md), with the reasoning behind each. D-35 to D-37 come from the
+> bug-fix pass that followed it.
 
 ---
 
@@ -59,12 +60,16 @@ query string and passes `ssl="require"` instead.
 
 **Why:** asyncpg rejects the `sslmode` query parameter that hosted providers put
 in their connection strings. The check lets the app run against a free hosted
-Postgres without a local install. The `pool_size` / `max_overflow` settings were
-removed because they "conflict when connect_args includes ssl."
+Postgres without a local install. `pool_size` / `max_overflow` were originally
+removed too, on the grounds that they "conflict when connect_args includes ssl."
 
-**Trade-offs:** The check matches on hostnames, so a new provider needs a code change. It relies on default pool sizes.
+**Trade-offs:** The check matches on hostnames, so a new provider needs a code change.
 
-**Status:** Active. **Source:** stated (docstring in `session.py`).
+**Status:** Active, but **amended by D-36**: the pool settings are back and set
+explicitly. They do not in fact conflict with `connect_args={"ssl": ...}` — they
+are pool arguments, not connection arguments — and relying on the defaults left a
+ceiling of 15 that the app's own fan-out could exhaust on a single request.
+**Source:** stated (docstring in `session.py`).
 
 ---
 
@@ -618,3 +623,82 @@ by an explicit test instead. Lighthouse was not run, so the "score at least 95" 
 is met in spirit (no axe violations), not by that number.
 
 **Status:** Active. **Source:** fix-plan Step 40.
+
+---
+
+## D-35. Reload is supervised by watchfiles, not `uvicorn --reload`
+
+**Decision:** `start.ps1` runs the API under the `watchfiles` CLI
+(`watchfiles "uvicorn main:app --port 8000" .`) instead of passing `--reload` to
+uvicorn. The venv's `Scripts` directory goes on `PATH` first so that `uvicorn`
+in that command is the venv's.
+
+**Why:** uvicorn's reloader restarts its worker on Windows with
+`os.kill(pid, signal.CTRL_C_EVENT)`, which is delivered by
+`GenerateConsoleCtrlEvent` and needs a console and a process-group leader. The
+launcher redirects the output streams so it can prefix and interleave both
+servers' logs, which leaves the worker without one. The call then *succeeds*
+without delivering anything, the `process.join()` after it waits forever, and no
+replacement worker starts — so the server keeps serving the code you just edited
+and the last line in the log is "Reloading...". Silently testing stale code is
+far worse than losing the unified log, and watchfiles restarts the command by
+terminating it, which needs no console.
+
+**Trade-offs:** The port is released and rebound on each restart instead of being
+held by a parent, so there is a brief window where the API refuses connections;
+reload takes ~3–4 s rather than ~1 s. watchfiles watches all of `backend/`, so
+editing a test restarts the API too. `uvicorn[standard]` already depends on
+watchfiles, so this adds nothing to install; the script falls back to
+`--reload` with a warning if it is somehow absent. Running `uvicorn --reload` by
+hand in a normal terminal is unaffected and still works.
+
+**Status:** Active. **Source:** stated — `start.ps1`, and the bug-fix pass of 2026-09-20.
+
+---
+
+## D-36. An explicit connection pool, and a cap on database fan-out
+
+**Decision:** The engine sets `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` and
+`DB_POOL_TIMEOUT` explicitly (10 + 20, 30 s) with `pool_recycle=1800`, and the
+two places that fan out over the database are bounded: a semaphore caps how many
+(source, query) cache lookups touch the pool at once, and the collection job's
+existing 4-at-a-time semaphore was widened to cover the "text already extracted
+elsewhere" lookup as well as the download.
+
+**Why:** SQLAlchemy's default is 5 + 10, and a request handler holds a connection
+of its own while the work it starts opens more. A single search over four sources
+and up to six queries asked for 24 sessions at once against a ceiling of 15, and a
+25-paper collection opened a session per paper for the reuse lookup and another
+per paper to write progress. None of that fails in a quiet dev database; it fails
+under concurrent users, as pool timeouts surfacing as 500s.
+
+**Trade-offs:** A cap makes a cold search slightly slower, since cache lookups
+queue in batches — the source HTTP call, which is the slow part, stays outside the
+semaphore and holds no connection. The ceiling is now a number someone has to keep
+under what the database allows: hosted Postgres plans cap connections low, and
+this is per instance, so N instances multiply it.
+
+**Status:** Active. **Source:** stated — the bug-fix pass of 2026-09-20.
+
+---
+
+## D-37. Providers declare their minimum output budget
+
+**Decision:** `LLMProvider` has an optional `minOutputTokens`. `generateJSON`
+starts from `max(requested, provider.minOutputTokens)`, and the retry after a
+truncated answer doubles from there. Anthropic declares 16,000.
+
+**Why:** Anthropic raises any smaller `max_tokens` to its floor. Extraction,
+screening and verification all ask for 4,096, so the first attempt was sent as
+16,000 and the "retry with twice the budget" was sent as 16,000 as well — the
+same number, guaranteed to truncate again and then fail with "the answer was too
+long". The recovery path existed but could never work for those three calls. It
+matters most with thinking-enabled models, where thinking counts toward the
+limit.
+
+**Trade-offs:** The floor is duplicated in the provider (as the clamp it still
+applies) and in the interface. A provider that gains or changes a floor has to
+update both, and a mismatch is invisible until something truncates — so a test
+pins the growth sequence (`[16000, 32000]`) rather than the clamp alone.
+
+**Status:** Active. **Source:** stated — the bug-fix pass of 2026-09-20.

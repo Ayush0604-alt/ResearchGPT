@@ -75,6 +75,23 @@ The full reasoning is in [`claudeMD/decisions.md`](claudeMD/decisions.md), and t
 
 **Prerequisites:** Python 3.11+, Node 22+, Docker (for Postgres), and an API key from [Google](https://aistudio.google.com/app/apikey), [Anthropic](https://console.anthropic.com/settings/keys) or [OpenAI](https://platform.openai.com/api-keys), which you enter in the app, not in a file.
 
+On Windows, once `backend/.env` exists and the database is reachable, [`start.ps1`](start.ps1) does the rest — it installs anything missing, starts both servers with reload, waits for the API to report healthy, and streams both logs into one window:
+
+```powershell
+.\start.ps1              # Ctrl+C stops both
+.\start.ps1 -Migrate     # also run 'alembic upgrade head' first
+.\start.ps1 -Stop        # kill servers left behind by an earlier run
+```
+
+It supervises the backend with `watchfiles` rather than `uvicorn --reload`. On
+Windows uvicorn restarts its worker with `os.kill(pid, CTRL_C_EVENT)`, which needs
+a console: with the output streams redirected the signal is never delivered, the
+old worker never exits, and the server keeps serving the code you just edited
+while the log claims it reloaded. Running `uvicorn --reload` by hand in a normal
+terminal is unaffected.
+
+The steps it automates, and the way to run them by hand on any platform:
+
 ```bash
 # 1. Database
 cp .env.example .env                  # set POSTGRES_PASSWORD
