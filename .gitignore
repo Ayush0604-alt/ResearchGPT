@@ -22,6 +22,8 @@ dist/
 # Storage (user data)
 backend/storage/
 backend/logs/
+# Dev server logs and the pid file start.ps1 writes
+/logs/
 
 # DB
 *.db
