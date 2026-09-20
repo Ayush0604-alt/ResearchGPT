@@ -54,7 +54,7 @@ test('pages of a finished project', async ({ page }) => {
 
   await page.goBack()
   await page.getByRole('link', { name: 'Review' }).click()
-  for (const tab of ['Introduction', 'Comparison', 'References', /Citation check/]) {
+  for (const tab of ['Introduction', 'Comparison', 'References', /Citation check/, 'History']) {
     await page.getByRole('tab', { name: tab }).click()
     await expectNoViolations(page, `review: ${tab}`)
   }
@@ -81,7 +81,7 @@ test('the review tabs work with the keyboard', async ({ page }) => {
   await expect(page.getByRole('tab', { name: 'Survey' })).toBeFocused()
   await expect(page.getByRole('tab', { name: 'Survey' })).toHaveAttribute('aria-selected', 'true')
   await page.keyboard.press('End')
-  await expect(page.getByRole('tab', { name: /Citation check/ })).toBeFocused()
+  await expect(page.getByRole('tab', { name: 'History' })).toBeFocused()
   await page.keyboard.press('Home')
   await expect(first).toBeFocused()
   // Only the selected tab is in the tab order.

@@ -120,6 +120,24 @@ export interface CitationCheck {
   note: string
 }
 
+/** The written sections of a review, in the order they are read. */
+export type ReviewSection =
+  'introduction' | 'body' | 'comparison' | 'discussion' | 'trends' | 'gaps' | 'conclusion'
+
+/** An earlier review of a project, kept when a re-run replaces it. */
+export interface ReviewVersion {
+  id: number
+  created_at: string
+  sections: Partial<Record<ReviewSection, string | null>>
+  citation_checks: CitationCheck[] | null
+  run_meta: RunMeta | null
+  /** Titles of the papers it was written from. */
+  papers: string[]
+  metrics: Record<string, number | null>
+  /** The version that matches the project's current review. */
+  current: boolean
+}
+
 /** A passage of a paper's text, found by full-text search. */
 export interface Passage {
   paper_id: number

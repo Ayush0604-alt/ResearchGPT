@@ -3,7 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { chatAPI, httpStatus, papersAPI, projectsAPI, reviewsAPI } from './api'
-import type { LiteratureReview, Project } from './types'
+import type { LiteratureReview, Project, ReviewVersion } from './types'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -13,6 +13,7 @@ export const keys = {
   chat: (id: string) => ['chat', id] as const,
   summaries: (id: string) => ['summaries', id] as const,
   findings: (id: string) => ['findings', id] as const,
+  versions: (id: string) => ['versions', id] as const,
 }
 
 const POLL_MS = 2000
@@ -65,6 +66,15 @@ export function useReview(id: string) {
         throw err
       }
     },
+  })
+}
+
+/** Earlier reviews of this project, for the History tab. */
+export function useReviewVersions(id: string, enabled = true) {
+  return useQuery<ReviewVersion[]>({
+    queryKey: keys.versions(id),
+    queryFn: async () => (await reviewsAPI.versions(id)).data,
+    enabled,
   })
 }
 
@@ -145,6 +155,7 @@ export function invalidateProjectResults(qc: ReturnType<typeof useQueryClient>, 
       keys.review(id),
       keys.summaries(id),
       keys.findings(id),
+      keys.versions(id),
       keys.projects,
     ].map((queryKey) => qc.invalidateQueries({ queryKey })),
   )

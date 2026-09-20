@@ -186,6 +186,20 @@ class PaperForAnalysis(BaseModel):
     has_extraction: bool = False
 
 
+class ReviewVersionOut(BaseModel):
+    """One earlier review of a project, with the metrics used to compare runs."""
+
+    id: int
+    created_at: datetime
+    sections: Dict[str, Optional[str]]
+    citation_checks: Optional[List[Dict[str, Any]]] = None
+    run_meta: Optional[Dict[str, Any]] = None
+    papers: List[str] = Field(default_factory=list)
+    metrics: Dict[str, Optional[float]] = Field(default_factory=dict)
+    # True for the version that matches the project's current review.
+    current: bool = False
+
+
 class AddPaperIn(BaseModel):
     """A DOI, an arXiv id, or a link to either."""
 

@@ -285,3 +285,31 @@ test('papers can be added, uploaded and removed, then the review updated', async
   await expect(page.getByText('Analysed')).toHaveCount(4)
   await expect(page.getByText('Completed')).toBeVisible()
 })
+
+test('earlier runs are kept and can be read side by side', async ({ page }) => {
+  await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'run history')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+
+  // A second run replaces the review; the first is kept.
+  page.on('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: 'Run again' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('link', { name: 'Review' }).click()
+  await page.getByRole('tab', { name: 'History' }).click()
+  const panel = page.getByRole('tabpanel')
+  const runs = panel.getByRole('row').filter({ has: page.getByRole('button') })
+  await expect(runs).toHaveCount(2)
+  await expect(runs.first()).toContainText('Current')
+  await expect(runs.first()).toContainText('gemini-2.5-flash')
+
+  // Reading an older run shows its text, with a way back to the current one.
+  await runs.nth(1).getByRole('button', { name: 'View' }).click()
+  await expect(page.getByText(/Reading the run from/)).toBeVisible()
+  await expect(panel.getByText(/Graph learning is moving fast/)).toBeVisible()
+  await page.getByRole('button', { name: 'Back to current' }).click()
+  await expect(page.getByText(/Reading the run from/)).toHaveCount(0)
+})

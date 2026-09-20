@@ -11,6 +11,7 @@ import type {
   PaperForAnalysis,
   PaperSummary,
   Passage,
+  ReviewVersion,
   Candidate,
   Project,
   SourceName,
@@ -147,6 +148,8 @@ export const papersAPI = {
 // ── Reviews ───────────────────────────────────────────────────────────────────
 export const reviewsAPI = {
   get: (pid: number | string) => api.get<LiteratureReview>(`/reviews/${pid}`),
+  /** Earlier reviews of this project, newest first. */
+  versions: (pid: number | string) => api.get<ReviewVersion[]>(`/reviews/${pid}/versions`),
   // responseType 'text' so axios doesn't try to parse the markdown as JSON
   markdown: (pid: number | string) =>
     api.get<string>(`/reviews/${pid}/markdown`, { responseType: 'text' }),

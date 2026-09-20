@@ -95,3 +95,36 @@ async def test_run_meta_is_validated(client, make_user, make_project):
         f"/projects/{pid}/analysis", json=REVIEW | {"run": bad}, headers=user["headers"]
     )
     assert resp.status_code == 422
+
+
+async def test_each_saved_review_is_kept_as_a_version(client, make_user, make_project):
+    from app.services.analysis_service import MAX_VERSIONS
+
+    user, pid, _ = await _collected_project(make_user, make_project)
+    h = user["headers"]
+
+    for i in range(MAX_VERSIONS + 2):
+        body = REVIEW | {"introduction": f"Version {i} [P1].", "run": RUN}
+        assert (await client.put(f"/projects/{pid}/analysis", json=body, headers=h)).status_code
+    versions = (await client.get(f"/reviews/{pid}/versions", headers=h)).json()
+
+    assert len(versions) == MAX_VERSIONS  # the oldest are dropped
+    assert versions[0]["current"] is True
+    assert versions[0]["sections"]["introduction"] == f"Version {MAX_VERSIONS + 1} [P1]."
+    assert versions[-1]["sections"]["introduction"] == "Version 2 [P1]."
+    assert versions[0]["papers"] == ["Paper 0", "Paper 1"]
+    assert versions[0]["run_meta"]["prompt_version"] == RUN["prompt_version"]
+    assert versions[0]["metrics"]["words"] > 0
+
+    # The current review still reads as it always did.
+    review = (await client.get(f"/reviews/{pid}", headers=h)).json()
+    assert review["introduction"] == f"Version {MAX_VERSIONS + 1} [P1]."
+
+
+async def test_versions_are_private(client, make_user, make_project):
+    user, pid, _ = await _collected_project(make_user, make_project)
+    await client.put(f"/projects/{pid}/analysis", json=REVIEW, headers=user["headers"])
+    other = await make_user()
+    assert (
+        await client.get(f"/reviews/{pid}/versions", headers=other["headers"])
+    ).status_code == 404

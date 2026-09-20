@@ -169,6 +169,27 @@ class Paper(Base):
 Paper.has_full_text = column_property(Paper.full_text.is_not(None))
 
 
+class ReviewRun(Base):
+    """
+    A finished review, kept as history: a project's earlier reviews stay
+    readable and comparable after a re-run replaces the current one.
+    """
+
+    __tablename__ = "review_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("research_projects.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # The review's sections, as saved: {introduction, body, ...}.
+    sections: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    citation_checks: Mapped[Optional[list]] = mapped_column(JSONB)
+    run_meta: Mapped[Optional[dict]] = mapped_column(JSONB)
+    # Titles of the papers this review was written from, for comparing runs.
+    papers: Mapped[Optional[list]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now())
+
+
 class PaperChunk(Base):
     """
     A passage of a paper's text (or its abstract), indexed for full-text search
