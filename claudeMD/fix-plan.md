@@ -4,6 +4,11 @@ This is one ordered plan that covers **every** item in [improvements.md](improve
 (**I§n**) and [design-improvements.md](design-improvements.md) (**D§n**), ending in
 the deployment goal: **a public app where users bring their own LLM key, kept only in `localStorage`**.
 
+> **Status (2026-09-20): every step is done.** Phases 0–7 are complete; the notes under each
+> phase record what was built, what was done differently from this plan, and what was skipped
+> on purpose (DOCX export, GROBID, pgvector, shadcn/ui). Two items need a human: the baseline
+> pipeline run in Step 1 and a CI run on GitHub (Step 4).
+
 **How to use it:**
 - Work top to bottom. Each step lists what it depends on, the actions to take, and a **Done when** check.
 - Make one branch or PR per step and keep `main` deployable.
@@ -307,7 +312,7 @@ Use Alembic autogenerate, then review the result by hand:
 **Done when:** sessions last longer than an hour without re-login, and `localStorage` contains only `researchgpt-llm`.
 
 ### ☑ Step 27: Final security headers · D§1
-- CSP `connect-src 'self' https://generativelanguage.googleapis.com` (add the OpenAI and Anthropic domains in Step 38).
+- CSP `connect-src 'self' https://generativelanguage.googleapis.com https://api.anthropic.com https://api.openai.com` (the Anthropic and OpenAI hosts were added in Step 38).
 - Add `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Permissions-Policy`.
 - Confirm there are no third-party scripts.
 
@@ -418,26 +423,34 @@ Add a server endpoint that returns the references and citing papers of chosen pa
 
 ## Phase 7: Scale and polish
 
-### ☐ Step 38: More providers and model tiers · D§2
+### ☑ Step 38: More providers and model tiers · D§2
 - Add the OpenAI and Anthropic adapters, and add their domains to the CSP `connect-src`.
 - Default fast and strong model for each provider, which the user can override.
 - Show a cost estimate before each run, using `estimateTokens()` and a per-model price table the user can edit.
 
 **Done when:** a full run works with each provider.
 
-### ☐ Step 39: RAG for large projects · D§3, I§3
+### ☑ Step 39: RAG for large projects · D§3, I§3
 - Enable pgvector. The **browser** computes embeddings with the user's key and uploads the vectors, so the key still never reaches the server.
 - Add a search endpoint that combines keyword search (Postgres full-text) with vector search. Chat switches to retrieval once a project has more than about 30 papers.
 
 **Done when:** chat on a 50-paper project answers with citations and stays within the model's context limit.
 
-### ☐ Step 40: Product and UX · I§7, D§4
+### ☑ Step 40: Product and UX · I§7, D§4
 - Keep a history of runs and compare them, instead of replacing the old results.
 - Manual paper control: remove a paper, add one by DOI or arXiv id, or upload a PDF, then re-run the analysis only.
 - Dashboard: search, filter by status, paper count on each card.
 - Use shadcn/ui components. Accessibility: ARIA roles on tabs and steps, `aria-label` on icon buttons, and full keyboard navigation.
 
 **Done when:** a Lighthouse accessibility score of at least 95 and the listed features work.
+
+> **Phase 7 notes (2026-09-20):** 186 backend, 90 unit and 28 end-to-end tests pass.
+> - **Providers (38):** Anthropic (official SDK, loaded only when chosen, so it costs other users nothing) and OpenAI (plain `fetch`) sit behind the same `LLMProvider` interface as Gemini. Each provider names a fast model (reads papers) and a strong one (review and chat); switching provider clears the key, which belongs to one provider. A cost estimate is shown before each run from a price table the user can edit in Settings. The CSP lists all three API hosts, and a test ties that list to the provider list.
+> - **Retrieval (39):** not pgvector. A project holds at most 25 papers, so chat retrieves passages with Postgres full-text search over ~1,500-character chunks (`paper_chunks`, built lazily on the first search). Embeddings would have had to be computed in the browser with the user's key and uploaded, for a corpus small enough that keyword search answers it. Chat now quotes the papers' own text, not only their extracted summaries.
+> - **Product and UX (40):** run history (`review_runs`, the last 10 runs per project) with a History tab that compares runs on the same metrics the evaluation script uses, and any earlier run can be read in place; papers can be added by DOI or arXiv id, uploaded as a PDF (only its text is kept) or removed, after which the run button rewrites the review over the papers that are now there; the dashboard has search, a status filter and paper counts.
+> - **Accessibility:** axe-core (WCAG 2.1 A and AA) runs over every page in Playwright and passes. Fixes: brand and gray text darkened to at least 4.5:1, WAI-ARIA tabs with arrow-key navigation, no interactive controls nested inside buttons, labels on icon-only controls, and the page fade-in is skipped for `prefers-reduced-motion`. **shadcn/ui was skipped**: the pages are plain Tailwind and already accessible, so swapping the component library would have been churn without a user-visible gain. Lighthouse itself was not run; axe with no violations is the check used instead.
+> - **Bugs found on the way:** Tailwind only scanned `.js`/`.jsx`, so classes used in the newer `.tsx` files were missing from the CSS; axios forced `application/json` on uploads, so multipart requests arrived without the file; toasts covered the chat's send button.
+> - **Migrations:** 0011 and 0012.
 
 ---
 

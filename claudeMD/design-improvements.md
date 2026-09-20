@@ -1,8 +1,11 @@
 # ResearchGPT — Design Improvements
 
-> **Status (2026-09-19):** §0–§2 and §4–§6 are implemented. The browser holds the key, the server has no
-> LLM code, and the app is secured and ready to deploy (see [DEPLOY.md](../DEPLOY.md)). The pipeline upgrades in §3
-> (better sources, screening, full-PDF input, RAG) are Phases 5–7 of [fix-plan.md](fix-plan.md).
+> **Status (2026-09-20): implemented.** The browser holds the key, the server has no LLM code, and the
+> app is secured and ready to deploy (see [DEPLOY.md](../DEPLOY.md)). The pipeline upgrades in §3 are done
+> too — five sources with screening and citation following, full-PDF input, citation checks, exports,
+> three providers, and retrieval for chat — with two deliberate departures recorded in
+> [decisions.md](decisions.md): retrieval is Postgres full-text search rather than pgvector (D-30), and
+> quality is measured from stored runs rather than by an LLM judge (D-32).
 
 > **End goal:** a public deployment where each user enters **their own LLM API key**
 > in the frontend. The key is kept **only in that browser's `localStorage`**. It is

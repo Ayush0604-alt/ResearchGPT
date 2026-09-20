@@ -8,7 +8,8 @@ browser ──HTTPS──▶ frontend (nginx: static app + security headers)
                       │  /api/*  (same origin, so cookies and CSP just work)
                       ▼
                    backend (FastAPI) ──▶ Postgres
-browser ──HTTPS──▶ generativelanguage.googleapis.com   (user's key, direct)
+browser ──HTTPS──▶ the user's LLM provider, direct with their key:
+                   generativelanguage.googleapis.com | api.anthropic.com | api.openai.com
 ```
 
 Both images are production-ready:
@@ -76,9 +77,11 @@ Terminate TLS in front of it (every platform does this for you).
 
 ## 4. Adding another LLM provider later
 
-Browser calls to a provider must be allowed by the CSP. Add the provider's API
-host to `connect-src` in **both** `nginx.conf.template` and `public/_headers`.
-The unit test `src/security-headers.test.ts` fails if the two differ.
+Gemini, Claude and OpenAI ship enabled. Browser calls to any provider must be
+allowed by the CSP, so a new one needs its API host in `connect-src` in **both**
+`nginx.conf.template` and `public/_headers`. `src/security-headers.test.ts`
+fails if the two files differ, or if the hosts don't match the providers the app
+actually ships.
 
 ## 5. Verify
 
@@ -96,5 +99,6 @@ staging copy.
 Also check:
 - **securityheaders.com** or the **Mozilla Observatory** for your domain.
 - In the browser's Network tab, run an analysis and confirm the API key is only
-  sent to `generativelanguage.googleapis.com`.
+  sent to the provider's host (`generativelanguage.googleapis.com`,
+  `api.anthropic.com` or `api.openai.com`) and never to `/api/*`.
 - `GET /docs` returns 404 in production.

@@ -1,9 +1,9 @@
 # ResearchGPT — Improvements
 
-> **Status (2026-09-19):** every item in §1–§6 is fixed or superseded, and so are the items in §7
-> needed for launch (re-run, readable review, polling, privacy). This document is kept as the record
-> of what was wrong. For where each item was fixed, see the traceability table in
-> [fix-plan.md](fix-plan.md). What's still open is Phases 5–7 of that plan.
+> **Status (2026-09-20): every item is fixed or superseded**, §7 included (re-run, readable review,
+> exports, polling, privacy, run history, manual paper control, accessibility). This document is kept
+> as the record of what was wrong. For where each item was fixed, see the traceability table in
+> [fix-plan.md](fix-plan.md), whose phase notes also list what was skipped on purpose.
 
 These come from a full read of the codebase at `1446fba`. Items are grouped by
 theme and tagged with a priority:

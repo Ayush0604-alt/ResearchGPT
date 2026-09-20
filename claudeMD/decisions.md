@@ -8,8 +8,8 @@ Each entry has a **Source** line that says where the reasoning comes from:
 
 Each entry uses this format: **Decision → Why → Trade-offs accepted → Status**.
 
-> **Update (2026-09-19):** D-1 to D-19 record the original design. Entries replaced during
-> the fixes are marked *Superseded*. D-20 to D-27 are the decisions made in
+> **Update (2026-09-20):** D-1 to D-19 record the original design. Entries replaced during
+> the fixes are marked *Superseded*. D-20 to D-34 are the decisions made in
 > [fix-plan.md](fix-plan.md), with the reasoning behind each.
 
 ---
@@ -428,7 +428,7 @@ Both run in the browser with the user's key. There is no LangGraph.
 
 ---
 
-## D-23. Gemini through REST with `fetch`, not the JS SDK
+## D-23. Gemini through REST with `fetch`, not the JS SDK (extended by D-28)
 
 **Decision:** The browser calls `generativelanguage.googleapis.com` directly with `fetch`, sending the key only in the `x-goog-api-key` header. Structured output uses `responseSchema`, which is generated from Zod schemas.
 
@@ -486,3 +486,135 @@ Both run in the browser with the user's key. There is no LangGraph.
 **Why:** Several instances starting together must not race to migrate. A non-root process with no compiler limits what an attacker can do after a compromise.
 
 **Status:** Active. **Source:** fix-plan Step 29.
+
+---
+
+## D-28. Three providers behind one interface: `fetch` for Gemini and OpenAI, the official SDK for Claude
+
+**Decision:** Gemini and OpenAI are called with plain `fetch`; Anthropic is called with
+`@anthropic-ai/sdk`, imported on demand (`dangerouslyAllowBrowser`, SDK retries off) so it is
+downloaded only by the people who pick Claude. All three implement the same `LLMProvider`
+interface, and each names a **fast** model (one call per paper) and a **strong** one (the review
+and chat).
+
+**Why:** The Anthropic API's browser support, structured output and document blocks are easier to
+get right through the SDK than by hand, and the SDK is the vendor's supported path; the other two
+are a single JSON endpoint each, where a dependency would buy nothing. Lazy loading keeps the
+default bundle the size it was (the SDK is ~53 kB gzipped in its own chunk).
+
+**Trade-offs:** One more dependency to keep current, and two code paths for error mapping. The
+key still belongs to one provider at a time: switching provider clears it, rather than juggling
+several keys in localStorage.
+
+**Status:** Active. **Source:** fix-plan Step 38.
+
+---
+
+## D-29. A cost estimate from an editable price table, not a billing API
+
+**Decision:** Before a run, the project page shows roughly what it will cost, from token estimates
+per stage and a list-price table (`llm/pricing.ts`) the user can override per model in Settings.
+Every run records what it actually used, per model.
+
+**Why:** Nobody should start a run without knowing whether it costs cents or dollars. Providers
+have no browser-callable billing API, prices change, and a stale hard-coded number is worse than
+one the user can correct.
+
+**Trade-offs:** The estimate is approximate, and the defaults go out of date. The actual usage
+recorded per run is what corrects the picture afterwards.
+
+**Status:** Active. **Source:** fix-plan Step 38.
+
+---
+
+## D-30. Keyword retrieval over paper passages, not embeddings
+
+**Decision:** Chat retrieves passages with Postgres full-text search over ~1,500-character chunks
+(`paper_chunks`, a generated `tsvector` with a GIN index, built lazily on a project's first
+search). pgvector and browser-side embeddings were dropped from the plan.
+
+**Why:** A project holds at most 25 papers, so a question matches a handful of passages by keyword
+just as well; ranking is `ts_rank_cd` with at most three passages per paper so one long paper
+can't crowd out the rest. Embeddings would have had to be computed in the browser with the user's
+key, uploaded, versioned per model and re-computed when the model changed — real cost and
+complexity for a corpus this size.
+
+**Trade-offs:** Questions that share no words with the papers retrieve nothing (the model still
+has every paper's extracted findings, so it answers from those). If projects ever hold hundreds of
+papers, this is the decision to revisit.
+
+**Status:** Active. **Source:** fix-plan Step 39.
+
+---
+
+## D-31. Citation checking against extracted findings, best effort
+
+**Decision:** After the review is written, every cited sentence (up to 40, in batches of 10) is
+checked against the extracted findings of the papers it cites, and gets a verdict of *supported*,
+*partly* or *unsupported*. A failure of this step never costs the user the review that is already
+written, and the results are shown in their own tab with a banner.
+
+**Why:** The failure mode people actually fear in a generated review is a citation that doesn't
+support the claim. Checking against what was already extracted adds one cheap call per ten claims
+instead of re-reading every paper.
+
+**Trade-offs:** The check sees the extraction, not the whole paper, so it can be wrong in both
+directions; the UI says so and tells the reader to check flagged claims against the paper. An
+alternative — asking for a supporting quote with every claim — was dropped because it shapes the
+prose around quotable sentences.
+
+**Status:** Active. **Source:** fix-plan Step 36.
+
+---
+
+## D-32. Measuring quality from stored runs, with no LLM judge
+
+**Decision:** Every review is saved with its prompt version, provider, models, token usage and
+duration. `backend/scripts/eval_reviews.py` reads the stored reviews (read-only) and averages
+metrics per prompt version over the fixed topics in `eval/topics.json`: citation density, coverage
+of the analysed papers, supported and unsupported claim rates, invented citations removed, tokens.
+
+**Why:** It answers "did that prompt change help?" from data each run already produces, and costs
+the user nothing extra. A second model grading the prose would spend the user's key on every run
+and drift as models change.
+
+**Trade-offs:** The metrics are proxies; they say nothing about whether the prose reads well. The
+evaluation README says to read a couple of reviews from each version side by side before adopting
+a prompt.
+
+**Status:** Active. **Source:** fix-plan Step 37.
+
+---
+
+## D-33. Papers are the user's to change, and each run is kept
+
+**Decision:** A paper can be added by DOI or arXiv id, uploaded as a PDF (only its text is stored,
+never the file) or removed. Any change puts the project back to `collected`, so the next run
+rewrites the review over the papers that are now there, re-reading only the new ones. The last ten
+reviews per project are kept (`review_runs`) and compared in a History tab.
+
+**Why:** Search never finds exactly the right set: the seminal paper is paywalled, or a result is
+off-topic. Without run history, re-running is a gamble — the previous review is gone.
+
+**Trade-offs:** A row per run, capped at ten, and one more status transition to reason about. The
+old review stays readable while the papers no longer match it, which the UI has to say plainly.
+
+**Status:** Active. **Source:** fix-plan Step 40.
+
+---
+
+## D-34. Accessibility checked by axe in CI, and no component library
+
+**Decision:** Playwright runs axe-core (WCAG 2.1 A and AA) over every page in the states users see
+them, and the suite fails on any violation. The pages stay plain Tailwind with a small
+`Tabs` component that follows the WAI-ARIA tabs pattern; shadcn/ui was not adopted.
+
+**Why:** An automated check that fails the build keeps accessibility from rotting, and it caught
+real problems: text at 2.5:1 contrast, a link nested inside a button, icon-only controls with no
+name. Swapping in a component library would have rewritten every page for no user-visible gain.
+
+**Trade-offs:** axe catches maybe half of what a manual audit would; keyboard behaviour is covered
+by an explicit test instead. Lighthouse was not run, so the "score at least 95" target in the plan
+is met in spirit (no axe violations), not by that number.
+
+**Status:** Active. **Source:** fix-plan Step 40.
