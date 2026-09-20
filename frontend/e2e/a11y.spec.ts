@@ -43,7 +43,9 @@ test('pages of a finished project', async ({ page }) => {
   await expectNoViolations(page, 'project (ready)')
   await page.getByRole('button', { name: 'Run analysis' }).click()
   await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
-  await page.getByRole('button', { name: /Graph Transformers for Molecular/ }).click()
+  await page
+    .getByRole('button', { name: /Graph Transformers for Molecular Property Prediction$/ })
+    .click()
   await expectNoViolations(page, 'project (done)')
 
   await page.goto('/dashboard')

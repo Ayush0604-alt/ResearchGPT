@@ -186,6 +186,12 @@ class PaperForAnalysis(BaseModel):
     has_extraction: bool = False
 
 
+class AddPaperIn(BaseModel):
+    """A DOI, an arXiv id, or a link to either."""
+
+    identifier: Annotated[str, StringConstraints(min_length=4, max_length=500)]
+
+
 class PassageOut(BaseModel):
     paper_id: int
     text: str

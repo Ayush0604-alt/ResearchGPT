@@ -5,20 +5,23 @@ Projects Routes: /api/projects
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_owned_project
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import Paper, ResearchProject
 from app.schemas.schemas import (
+    AddPaperIn,
     AnalysisIn,
     Candidate,
     CollectRequest,
     PaperExtractionIn,
+    PaperOut,
     ProjectCreate,
     ProjectList,
     ProjectOut,
@@ -26,7 +29,7 @@ from app.schemas.schemas import (
     SearchRequest,
     SnowballRequest,
 )
-from app.services import analysis_service, collection_service
+from app.services import analysis_service, collection_service, manual_papers
 from app.services.search import SearchUnavailable
 from app.services.search.records import normalize_title
 
@@ -112,6 +115,47 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
 ):
     await db.delete(project)
+
+
+@router.post("/{project_id}/papers", response_model=PaperOut, status_code=201)
+@limiter.limit("30/minute")
+async def add_paper(
+    request: Request,
+    body: AddPaperIn,
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a paper by DOI or arXiv id, with its open-access text when there is one."""
+    try:
+        return await manual_papers.add_by_identifier(db, project, body.identifier)
+    except manual_papers.PaperError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/{project_id}/papers/upload", response_model=PaperOut, status_code=201)
+@limiter.limit("20/minute")
+async def upload_paper(
+    request: Request,
+    file: UploadFile = File(...),
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a paper from a PDF. Only its text is stored, never the file."""
+    content = await file.read(settings.MAX_PDF_SIZE_MB * 1024 * 1024 + 1)
+    try:
+        return await manual_papers.add_upload(db, project, content, file.filename or "")
+    except manual_papers.PaperError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.delete("/{project_id}/papers/{paper_id}", status_code=204)
+async def remove_paper(
+    paper_id: int,
+    project: ResearchProject = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Drop a paper from the project. The review is kept until it is rewritten."""
+    await manual_papers.remove(db, project, paper_id)
 
 
 @router.post("/{project_id}/collect", response_model=ProjectOut, status_code=202)

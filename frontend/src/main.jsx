@@ -28,8 +28,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       >
         <App />
         <Toaster
-          // Bottom: top-right toasts covered the page header's action buttons.
-          position="bottom-right"
+          // Centred: top-right toasts covered the page header's action buttons,
+          // bottom-right ones covered the chat composer's send button.
+          position="top-center"
           toastOptions={{
             style: {
               background: '#fff',

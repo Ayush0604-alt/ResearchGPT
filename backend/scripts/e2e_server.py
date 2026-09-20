@@ -97,7 +97,7 @@ FAKE_PAPERS = [
 
 def use_fake_sources() -> None:
     """E2E runs must not depend on Semantic Scholar/arXiv/PubMed being up."""
-    from app.services import collection_service
+    from app.services import collection_service, manual_papers
 
     async def search(topic, max_papers):
         return [dict(p) for p in FAKE_PAPERS][:max_papers]
@@ -135,6 +135,24 @@ def use_fake_sources() -> None:
     collection_service.default_fetch_pdf = fetch_pdf
     collection_service.default_neighbours = neighbours
     collection_service.default_fetch_text = fetch_text
+
+    async def lookup(kind, value):
+        """Manual "add by DOI/arXiv id" without calling OpenAlex or arXiv."""
+        if value.endswith("unknown"):
+            return None
+        return {
+            "title": f"Manually added paper ({value})",
+            "authors": ["Grace Hopper"],
+            "abstract": "A paper the search missed, added by identifier.",
+            "year": 2025,
+            "url": "https://example.org/manual",
+            "pdf_url": "https://example.org/manual.pdf",
+            "doi": value if kind == "doi" else None,
+            "source": kind,
+            "external_id": value,
+        }
+
+    manual_papers.default_lookup = lookup
 
 
 if __name__ == "__main__":

@@ -30,7 +30,9 @@ test('a full run: collect on the server, analyse in the browser, read the review
   await expect(page.getByText('Analysed')).toHaveCount(3)
 
   // Per-paper findings are shown on the project page.
-  await page.getByRole('button', { name: /Graph Transformers for Molecular/ }).click()
+  await page
+    .getByRole('button', { name: /Graph Transformers for Molecular Property Prediction$/ })
+    .click()
   await expect(page.getByText('ogbg-molhiv')).toBeVisible()
 
   // The review keeps real citations (as numbered links) and drops the invented one.
@@ -154,7 +156,9 @@ test('screening keeps only relevant papers and shows why', async ({ page }) => {
   // 3 candidates were found; the one rated 1/10 was not collected.
   await expect(page.getByText(/^2 papers ·/)).toBeVisible()
   await expect(page.getByText('Relevance 8/10')).toHaveCount(2)
-  await page.getByRole('button', { name: /Graph Transformers for Molecular/ }).click()
+  await page
+    .getByRole('button', { name: /Graph Transformers for Molecular Property Prediction$/ })
+    .click()
   await expect(page.getByText('Directly on topic')).toBeVisible()
 })
 
@@ -249,4 +253,35 @@ test('chat quotes passages of the full texts that match the question', async ({ 
   await page.getByLabel('Your question').fill('What does the full text say?')
   await page.getByRole('button', { name: 'Send question' }).click()
   await expect(page.getByText(/\(excerpts: [1-9]\d*\)/)).toBeVisible()
+})
+
+test('papers can be added, uploaded and removed, then the review updated', async ({ page }) => {
+  await stubGemini(page)
+  await signUpWithKey(page)
+  await newProject(page, 'manual papers')
+  await page.getByRole('button', { name: 'Run analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('3 papers · 2 with full text')).toBeVisible()
+
+  // Remove one paper: the saved review no longer covers the papers.
+  page.on('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: /^Remove "Graph Transformers/ }).click()
+  await expect(page.getByText(/^2 papers ·/)).toBeVisible()
+  await expect(page.getByText('Papers ready — analysis not finished')).toBeVisible()
+
+  // Add one by DOI, and one from a PDF on disk.
+  await page.getByLabel('Add a paper by DOI or arXiv id').fill('10.1000/manual')
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: /Manually added paper \(10\.1000\/manual\)$/ }),
+  ).toBeVisible()
+  await page.getByLabel('Upload a paper PDF').setInputFiles('e2e/fixtures/uploaded-paper.pdf')
+  await expect(page.getByRole('button', { name: /uploaded-paper$/ })).toBeVisible()
+  await expect(page.getByText(/^4 papers ·/)).toBeVisible()
+
+  // Only the two new papers are read; the review is rewritten over all four.
+  await page.getByRole('button', { name: 'Continue analysis' }).click()
+  await expect(page.getByText(/Review ready/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Analysed')).toHaveCount(4)
+  await expect(page.getByText('Completed')).toBeVisible()
 })

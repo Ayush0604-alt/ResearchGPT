@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import type { UseMutationResult } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import {
   ArrowLeft,
   BookOpen,
@@ -11,13 +13,23 @@ import {
   Loader2,
   MessageSquare,
   Play,
+  Plus,
   RotateCcw,
   Square,
+  Trash2,
+  Upload,
   Users,
   XCircle,
 } from 'lucide-react'
 import { BROWSER_PHASES, useResearchRun, type RunState } from '../research/useResearchRun'
-import { useFindings, usePapers, useProject, useSummaries } from '../services/queries'
+import { errorMessage } from '../services/api'
+import {
+  useFindings,
+  usePaperEdits,
+  usePapers,
+  useProject,
+  useSummaries,
+} from '../services/queries'
 import type { Paper, PaperFindings, PaperSummary, Project } from '../services/types'
 import { estimateRun, formatUsd } from '../llm/pricing'
 import { MAX_PAPERS } from '../research/useResearchRun'
@@ -176,6 +188,86 @@ function PaperDetails({
   )
 }
 
+function RemovePaper({ projectId, paper }: { projectId: string; paper: Paper }) {
+  const { remove } = usePaperEdits(projectId)
+  return (
+    <button
+      className="p-1 mt-3.5 text-gray-400 hover:text-red-600 transition-colors"
+      aria-label={`Remove "${paper.title}" from this project`}
+      disabled={remove.isPending}
+      onClick={() => {
+        if (!confirm(`Remove "${paper.title.slice(0, 80)}" from this project?`)) return
+        remove.mutate(paper.id, {
+          onSuccess: () => toast.success('Paper removed'),
+          onError: (err) => toast.error(errorMessage(err, "Couldn't remove that paper")),
+        })
+      }}
+    >
+      <Trash2 size={13} />
+    </button>
+  )
+}
+
+/** Add a paper the search missed: by DOI or arXiv id, or from a PDF on disk. */
+function AddPaper({ projectId }: { projectId: string }) {
+  const [identifier, setIdentifier] = useState('')
+  const { add, upload } = usePaperEdits(projectId)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const busy = add.isPending || upload.isPending
+
+  const run = <T,>(mutation: UseMutationResult<{ data: Paper }, unknown, T>, input: T) =>
+    mutation.mutate(input, {
+      onSuccess: ({ data }) => {
+        setIdentifier('')
+        toast.success(`Added "${data.title.slice(0, 60)}"`)
+      },
+      onError: (err) => toast.error(errorMessage(err, "Couldn't add that paper")),
+    })
+
+  return (
+    <form
+      className="flex gap-2 flex-wrap items-center mb-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (identifier.trim()) run(add, identifier.trim())
+      }}
+    >
+      <input
+        className="input flex-1 min-w-56"
+        placeholder="Add a paper by DOI or arXiv id"
+        aria-label="Add a paper by DOI or arXiv id"
+        value={identifier}
+        onChange={(e) => setIdentifier(e.target.value)}
+        disabled={busy}
+      />
+      <button type="submit" className="btn-secondary btn-sm" disabled={busy || !identifier.trim()}>
+        {add.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add
+      </button>
+      <button
+        type="button"
+        className="btn-secondary btn-sm"
+        onClick={() => fileInput.current?.click()}
+        disabled={busy}
+      >
+        {upload.isPending ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+        Upload PDF
+      </button>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/pdf"
+        className="sr-only"
+        aria-label="Upload a paper PDF"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) run(upload, file)
+        }}
+      />
+    </form>
+  )
+}
+
 /** A rough price for one run with the current models, billed to the user's key. */
 function RunCost() {
   const { extractModel, synthModel, sendPdfs, prices } = useLLMSettings()
@@ -219,6 +311,8 @@ export default function ProjectPage() {
   const summaryBy = new Map(summaries.map((s) => [s.paper_id, s]))
   const findingsBy = new Map(findings.map((f) => [f.paper_id, f]))
   const withText = papers.filter((p) => p.has_full_text).length
+  // Every paper already read: only the review itself needs rewriting.
+  const allAnalysed = papers.length > 0 && papers.every((p) => summaryBy.has(p.id))
 
   const startRun = () => {
     if (
@@ -247,7 +341,7 @@ export default function ProjectPage() {
     }
     return (
       <>
-        {status === 'completed' && (
+        {(status === 'completed' || status === 'collected') && (
           <>
             <Link to={`/project/${id}/chat`} className="btn-secondary btn-sm">
               <MessageSquare size={13} /> Chat
@@ -257,9 +351,9 @@ export default function ProjectPage() {
             </Link>
           </>
         )}
-        {status === 'collected' && (
+        {status === 'collected' && hasKey && (
           <button onClick={() => run.resume(project.topic)} className="btn-primary btn-sm">
-            <Play size={13} /> Continue analysis
+            <Play size={13} /> {allAnalysed ? 'Update review' : 'Continue analysis'}
           </button>
         )}
         {hasKey && <RunCost />}
@@ -325,6 +419,8 @@ export default function ProjectPage() {
         </p>
       )}
 
+      {!collectingOnServer && status !== 'pending' && <AddPaper projectId={id} />}
+
       {papers.length > 0 && (
         <div>
           <h2 className="section-title">Papers ({papers.length})</h2>
@@ -376,14 +472,15 @@ export default function ProjectPage() {
                         )}
                       </span>
                     </button>
-                    {/* A sibling of the toggle, not inside it: links can't nest in buttons. */}
+                    {/* Siblings of the toggle, not inside it: controls can't nest in buttons. */}
+                    <RemovePaper projectId={id} paper={paper} />
                     {paper.url && (
                       <a
                         href={paper.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={`Open "${paper.title}" in a new tab`}
-                        className="p-1 mr-4 mt-3.5 text-gray-400 hover:text-brand-600 transition-colors"
+                        className="p-1 mr-3 mt-3.5 text-gray-400 hover:text-brand-600 transition-colors"
                       >
                         <ExternalLink size={13} />
                       </a>

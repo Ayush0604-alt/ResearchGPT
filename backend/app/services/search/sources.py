@@ -205,6 +205,12 @@ def _openalex_record(w: Dict[str, Any]) -> PaperRecord:
     )
 
 
+async def openalex_by_doi(client: httpx.AsyncClient, doi: str) -> Optional[PaperRecord]:
+    """One work, looked up by DOI. None when OpenAlex doesn't know it."""
+    resp = await client.get(f"https://api.openalex.org/works/doi:{doi}", params=_openalex_params())
+    return _openalex_record(resp.json()) if resp.status_code == 200 else None
+
+
 async def openalex_neighbours(
     client: httpx.AsyncClient, dois: List[str], limit: int
 ) -> List[PaperRecord]:

@@ -27,6 +27,12 @@ const api = axios.create({
   },
 })
 
+// File uploads must carry their own multipart boundary, not the JSON default.
+api.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) delete config.headers['Content-Type']
+  return config
+})
+
 // Sessions are httpOnly cookies. When the short-lived access cookie expires,
 // renew it once with the refresh cookie and retry; concurrent 401s share one
 // refresh. If that fails the session is over: sign out.
@@ -91,6 +97,17 @@ export const projectsAPI = {
     snowball?: boolean
   }) => api.post<Project>('/projects', data),
   get: (id: number | string) => api.get<Project>(`/projects/${id}`),
+  /** Add one paper by DOI or arXiv id. */
+  addPaper: (id: number | string, identifier: string) =>
+    api.post<Paper>(`/projects/${id}/papers`, { identifier }),
+  /** Add one paper from a PDF; only its text is stored. */
+  uploadPaper: (id: number | string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<Paper>(`/projects/${id}/papers/upload`, form)
+  },
+  removePaper: (id: number | string, paperId: number) =>
+    api.delete(`/projects/${id}/papers/${paperId}`),
   delete: (id: number | string) => api.delete(`/projects/${id}`),
   /** Search every source with the topic plus planned queries; returns candidates. */
   search: (id: number | string, queries: string[]) =>

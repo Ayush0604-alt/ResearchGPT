@@ -108,6 +108,26 @@ export function useDeleteProject() {
   })
 }
 
+/** Add a paper by identifier or PDF, or drop one; both change the papers and the project. */
+export function usePaperEdits(id: string) {
+  const qc = useQueryClient()
+  const refresh = () => invalidateProjectResults(qc, id)
+  return {
+    add: useMutation({
+      mutationFn: (identifier: string) => projectsAPI.addPaper(id, identifier),
+      onSuccess: refresh,
+    }),
+    upload: useMutation({
+      mutationFn: (file: File) => projectsAPI.uploadPaper(id, file),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: (paperId: number) => projectsAPI.removePaper(id, paperId),
+      onSuccess: refresh,
+    }),
+  }
+}
+
 export function useClearChat(id: string) {
   const qc = useQueryClient()
   return useMutation({
