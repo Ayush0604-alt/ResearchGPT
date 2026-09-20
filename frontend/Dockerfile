@@ -11,4 +11,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # substituting environment variables such as API_UPSTREAM.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 ENV API_UPSTREAM=http://backend:8000
+# Hosts like Render assign the port at runtime; envsubst renders it into the
+# template's listen directive. 80 keeps docker compose working unchanged.
+ENV PORT=80
 EXPOSE 80

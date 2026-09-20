@@ -1,7 +1,7 @@
 # Rendered at container start by nginx's envsubst: ${API_UPSTREAM} is the API
 # base URL (default http://backend:8000, set in the Dockerfile).
 server {
-    listen 80;
+    listen ${PORT};
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
@@ -25,9 +25,26 @@ server {
     # Proxy API to backend
     location /api/ {
         proxy_pass         ${API_UPSTREAM};
-        proxy_set_header   Host $host;
+        proxy_http_version 1.1;
+
+        # Host is the upstream's own name, not this site's. A platform that
+        # routes by Host (Render does, for *.onrender.com and custom domains)
+        # cannot route the request otherwise. $proxy_host is taken from
+        # proxy_pass, so it stays correct for a container name, an internal
+        # address or a public URL without another variable to keep in sync.
+        proxy_set_header   Host $proxy_host;
+        # Send SNI when the upstream is https, or its TLS handshake fails.
+        proxy_ssl_server_name on;
+        # Rewrite any absolute redirect the API returns back to this origin,
+        # so the upstream's hostname never reaches the browser.
+        proxy_redirect     default;
+
+        # The API is behind two hops here; it reads the client IP from
+        # X-Forwarded-For for rate limiting, and the scheme for its own URLs.
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Forwarded-Host $host;
     }
 
     # React SPA fallback

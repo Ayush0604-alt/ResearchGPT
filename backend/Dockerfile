@@ -27,4 +27,8 @@ EXPOSE 8000
 # --proxy-headers: take the client IP from X-Forwarded-For (rate limits need it).
 # Uvicorn trusts that header only from FORWARDED_ALLOW_IPS (default 127.0.0.1):
 # set it to your reverse proxy's address; never "*" if the API is exposed.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+#
+# $PORT with a default: hosts like Render assign the port at runtime and expect
+# the server to bind it. Shell form so the variable expands, and `exec` so
+# uvicorn replaces the shell as PID 1 and still receives stop signals.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]

@@ -1,0 +1,76 @@
+# Render Blueprint — two Docker services, with the database elsewhere (Neon).
+#
+# Render's own Postgres is deliberately not declared here: on the free plan it is
+# deleted 30 days after creation, and this project already runs against Neon.
+# Point DATABASE_URL / SYNC_DATABASE_URL at whichever Postgres you keep.
+#
+# Full walkthrough, including the migration step, in DEPLOY.md.
+
+services:
+  # ── API ──────────────────────────────────────────────────────────────────────
+  - type: web
+    name: researchgpt-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # Put this in the same region as your database. Neon us-east-1 -> virginia,
+    # us-east-2 -> ohio. Crossing regions taxes every query.
+    region: virginia
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      # Generated once by Render and kept; never commit one.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      # Paste at Blueprint creation. DATABASE_URL needs the +asyncpg driver and
+      # should use a pooled endpoint; SYNC_DATABASE_URL (migrations) should use
+      # the direct one, since DDL should not run through a transaction pooler.
+      - key: DATABASE_URL
+        sync: false
+      - key: SYNC_DATABASE_URL
+        sync: false
+      # The frontend's own https URL, e.g. ["https://researchgpt-web.onrender.com"].
+      - key: CORS_ORIGINS
+        sync: false
+      # For OpenAlex's polite pool, and required by Unpaywall for PDF lookups.
+      - key: CONTACT_EMAIL
+        sync: false
+      # Modest, because this is per instance and sits in front of a pooler that
+      # is already doing the pooling. Raise only with a direct connection and a
+      # plan whose max_connections can take it.
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "10"
+      # uvicorn --proxy-headers only trusts X-Forwarded-For from these peers, and
+      # Render's router address is not fixed. "*" is required for per-IP rate
+      # limits to see real clients — but while this service is a public `web`
+      # type, anyone can forge that header and walk around those limits. On a
+      # paid plan, switch `type: web` to `type: pserv` below so only the frontend
+      # can reach it, and this becomes safe.
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      # Per instance, not shared. Use redis://… if you ever run more than one.
+      - key: RATE_LIMIT_STORAGE_URI
+        value: memory://
+
+  # ── Frontend (nginx: static app, security headers, /api proxy) ───────────────
+  - type: web
+    name: researchgpt-web
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    region: virginia
+    plan: free
+    envVars:
+      # Where nginx proxies /api. Two cases:
+      #   free  -> the API's public URL, https://researchgpt-api-XXXX.onrender.com
+      #            (a free service can send private-network requests but cannot
+      #             receive them, so the internal address will not work)
+      #   paid  -> its internal address, http://researchgpt-api-XXXX:10000
+      - key: API_UPSTREAM
+        sync: false
